@@ -139,12 +139,12 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .content {{
   min-width: 0;
-  padding: 32px clamp(16px, 5vw, 72px) 76px;
+  padding: 34px clamp(18px, 5vw, 76px) 76px;
 }}
 .masthead {{
   max-width: 1050px;
-  margin: 0 auto 24px;
-  padding-bottom: 22px;
+  margin: 0 auto 26px;
+  padding-bottom: 24px;
   border-bottom: 1px solid var(--line);
 }}
 .masthead h2 {{
@@ -163,16 +163,22 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .cards {{
   display: grid;
-  gap: 18px;
+  gap: 16px;
   max-width: 1050px;
   margin: 0 auto;
 }}
 .card {{
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 253, 249, 0.94);
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 24px rgba(59, 51, 43, 0.07);
   overflow: hidden;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}}
+.card:hover {{
+  border-color: rgba(111, 131, 110, 0.44);
+  box-shadow: 0 14px 34px rgba(59, 51, 43, 0.10);
 }}
 .card.table {{ border-color: rgba(118, 99, 116, 0.45); }}
 .card.figure {{ border-color: rgba(111, 131, 110, 0.54); }}
@@ -186,28 +192,40 @@ button:hover, button:focus-visible, input:focus-visible {{
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 14px 16px 0;
+  gap: 10px;
+  padding: 20px 22px 0;
 }}
-.eyebrow {{
-  color: var(--muted);
+.card-type {{
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(118, 99, 116, 0.24);
+  border-radius: 999px;
+  background: var(--plum-soft);
+  color: #675463;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }}
-.badge {{
+.page-chip {{
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 9px;
   border-radius: 999px;
   background: var(--accent-soft);
   color: #475f47;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 650;
+}}
+.card-header.plain {{
+  justify-content: flex-end;
+  padding-bottom: 0;
 }}
 .card-body {{
-  padding: 14px 16px 16px;
+  padding: 16px 22px 10px;
 }}
 .card.heading .card-body {{
   padding: 18px 0 2px;
@@ -222,8 +240,8 @@ button:hover, button:focus-visible, input:focus-visible {{
 .text {{
   margin: 0;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
-  font-size: clamp(21px, 2.2vw, 29px);
-  line-height: 1.48;
+  font-size: clamp(20px, 1.7vw, 27px);
+  line-height: 1.52;
   letter-spacing: 0;
 }}
 .caption {{
@@ -244,10 +262,23 @@ button:hover, button:focus-visible, input:focus-visible {{
   height: auto;
   min-width: min(760px, 100%);
 }}
-.actions {{
+.card-footer {{
   display: flex;
   justify-content: flex-end;
-  padding: 0 16px 16px;
+  padding: 0 22px 18px;
+}}
+.source-link {{
+  min-height: 34px;
+  padding: 0 11px;
+  border-color: rgba(217, 209, 199, 0.88);
+  background: rgba(255, 253, 248, 0.62);
+  color: var(--muted);
+  font-size: 13px;
+}}
+.source-link:hover,
+.source-link:focus-visible {{
+  color: #405840;
+  background: var(--accent-soft);
 }}
 .empty {{
   display: none;
@@ -430,6 +461,12 @@ function cardSearchText(card) {{
   return [card.text, card.section, asset?.caption, asset?.alt].filter(Boolean).join(" ").toLowerCase();
 }}
 
+function contentLabel(kind) {{
+  if (kind === "table") return "Table";
+  if (kind === "figure") return "Figure";
+  return "";
+}}
+
 function applyFilter() {{
   const query = searchEl.value.trim().toLowerCase();
   filtered = query ? cards.filter(card => cardSearchText(card).includes(query)) : [...cards];
@@ -453,7 +490,6 @@ function renderCard(card, index) {{
 
   const asset = card.image_id ? assetMap.get(card.image_id) : null;
   const sourceAsset = card.source_image_id ? assetMap.get(card.source_image_id) : null;
-  const label = card.kind === "paragraph" ? "Text" : card.kind;
   const badge = `Page ${{card.page}}`;
 
   if (card.kind === "heading") {{
@@ -474,16 +510,22 @@ function renderCard(card, index) {{
   }}
 
   const sourceButton = sourceAsset
-    ? `<button type="button" data-source="${{sourceAsset.id}}">Source page</button>`
+    ? `<button class="source-link" type="button" data-source="${{sourceAsset.id}}">View source</button>`
     : "";
+  const label = contentLabel(card.kind);
+  const header = label
+    ? `<div class="card-header">
+        <div class="card-type">${{escapeHtml(label)}}</div>
+        <div class="page-chip">${{escapeHtml(badge)}}</div>
+      </div>`
+    : `<div class="card-header plain">
+        <div class="page-chip">${{escapeHtml(badge)}}</div>
+      </div>`;
 
   article.innerHTML = `
-    <div class="card-header">
-      <div class="eyebrow">${{escapeHtml(label)}}</div>
-      <div class="badge">${{escapeHtml(badge)}}</div>
-    </div>
+    ${{header}}
     <div class="card-body">${{body}}</div>
-    <div class="actions">${{sourceButton}}</div>`;
+    <div class="card-footer">${{sourceButton}}</div>`;
 
   const button = article.querySelector("[data-source]");
   if (button) {{

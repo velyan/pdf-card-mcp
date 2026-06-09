@@ -53,3 +53,4 @@ def test_renderer_outputs_standalone_data_uri() -> None:
     assert "PDF" not in html[:15]
     assert "warm paper" not in html
     assert "Search the document" in html
+    assert ">Text<" not in html
