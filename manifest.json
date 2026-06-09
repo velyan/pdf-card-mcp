@@ -16,7 +16,18 @@
   "keywords": ["pdf", "html", "reader", "tables", "accessibility", "local-first"],
   "server": {
     "type": "uv",
-    "entry_point": "src/pdf_card_mcp/server.py"
+    "entry_point": "src/pdf_card_mcp/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "${__dirname}",
+        "run",
+        "python",
+        "-m",
+        "pdf_card_mcp.server"
+      ]
+    }
   },
   "tools": [
     {
