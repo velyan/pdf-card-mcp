@@ -84,6 +84,10 @@ class ConversionManifest:
         return sum(1 for asset in self.assets if asset.kind == "figure")
 
     @property
+    def formula_count(self) -> int:
+        return sum(1 for asset in self.assets if asset.kind == "formula")
+
+    @property
     def card_count(self) -> int:
         return len(self.cards)
 
@@ -96,6 +100,7 @@ class ConversionManifest:
             "card_count": self.card_count,
             "table_count": self.table_count,
             "figure_count": self.figure_count,
+            "formula_count": self.formula_count,
             "theme": self.theme,
             "warnings": self.warnings,
             "cards": [card.to_dict() for card in self.cards],

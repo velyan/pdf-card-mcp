@@ -38,6 +38,7 @@ class ConversionResult:
     card_count: int
     table_count: int
     figure_count: int
+    formula_count: int
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,6 +49,7 @@ class ConversionResult:
             "card_count": self.card_count,
             "table_count": self.table_count,
             "figure_count": self.figure_count,
+            "formula_count": self.formula_count,
             "warnings": self.warnings,
         }
 
@@ -57,6 +59,7 @@ class TextBlock:
     page: int
     bbox: BBox
     text: str
+    kind: str = "text"
 
 
 def convert_pdf_to_card_html(
@@ -132,7 +135,7 @@ class PdfCardConverter:
                 if not text_blocks and self.options.ocr:
                     text_blocks = self._ocr_page(source_asset, page_number)
                 for block in text_blocks:
-                    self._append_text_cards(block, source_asset.id)
+                    self._append_text_cards(block, source_asset.id, fitz_page)
 
             if not any(asset.kind == "table" for asset in self.assets):
                 if self._pdf_mentions_tables(plumber_pdf, processed_pages):
@@ -164,6 +167,7 @@ class PdfCardConverter:
             card_count=manifest.card_count,
             table_count=manifest.table_count,
             figure_count=manifest.figure_count,
+            formula_count=manifest.formula_count,
             warnings=manifest.warnings,
         )
 
@@ -371,6 +375,9 @@ class PdfCardConverter:
                 if line_text.strip():
                     lines.append(line_text.rstrip())
             text = normalize_block_lines(lines)
+            if text and is_formula_text_block(block, fitz_page.rect, text):
+                text_blocks.append(TextBlock(page=page_number, bbox=bbox, text=text, kind="formula"))
+                continue
             if text and not is_metadata_or_noise(text, page_number, document_title):
                 text_blocks.append(TextBlock(page=page_number, bbox=bbox, text=text))
         return merge_text_blocks(text_blocks)
@@ -393,7 +400,23 @@ class PdfCardConverter:
             return []
         return [TextBlock(page=page_number, bbox=(0, 0, 0, 0), text=text)]
 
-    def _append_text_cards(self, block: TextBlock, source_image_id: str) -> None:
+    def _append_text_cards(
+        self,
+        block: TextBlock,
+        source_image_id: str,
+        fitz_page: fitz.Page,
+    ) -> None:
+        if block.kind == "formula":
+            self._append_cropped_asset_card(
+                fitz_page=fitz_page,
+                page_number=block.page,
+                kind="formula",
+                bbox=block.bbox,
+                caption=block.text,
+                fallback_label=f"Formula on page {block.page}",
+            )
+            return
+
         kind = "heading" if looks_like_heading(block.text) else "paragraph"
         if kind == "heading":
             text_parts = [block.text]
@@ -588,6 +611,80 @@ def normalize_block_lines(lines: list[str]) -> str:
     return normalize_text(result)
 
 
+def is_formula_text_block(block: dict[str, Any], page_rect: fitz.Rect, text: str) -> bool:
+    cleaned = normalize_text(text)
+    if not looks_like_display_formula_text(cleaned):
+        return False
+
+    bbox = tuple(float(value) for value in block.get("bbox", (0, 0, 0, 0)))
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    if width <= 12 or height <= 6:
+        return False
+    if width > page_rect.width * 0.70:
+        return False
+
+    center_x = (bbox[0] + bbox[2]) / 2
+    centered = abs(center_x - (page_rect.width / 2)) <= page_rect.width * 0.24
+    if not centered:
+        return False
+
+    spans = [
+        span
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        if str(span.get("text", "")).strip()
+    ]
+    if not spans:
+        return False
+    math_spans = sum(1 for span in spans if is_math_font(str(span.get("font", ""))))
+    smaller_spans = count_smaller_formula_spans(spans)
+    math_ratio = math_spans / max(1, len(spans))
+    return math_ratio >= 0.35 or smaller_spans >= 1 or strong_formula_syntax(cleaned)
+
+
+def looks_like_display_formula_text(text: str) -> bool:
+    if len(text) < 3 or len(text) > 180:
+        return False
+    if re.match(r"^(?:[•*-]|\d+[\.)])\s+", text):
+        return False
+    if len(text.split()) > 18:
+        return False
+    if re.fullmatch(r"\d{1,4}", text):
+        return False
+    has_operator = bool(
+        re.search(r"(?:->|=>|←|→|↔|=|≤|≥|≠|∈|∉|∑|∏|∫|√|±|≈|∂|∀|∃|\barg\s*max\b|\barg\s*min\b)", text)
+    )
+    has_math_structure = bool(re.search(r"[A-Za-z]\s*[_^][A-Za-z0-9{(]|[(),:;]", text))
+    return has_operator and has_math_structure
+
+
+def strong_formula_syntax(text: str) -> bool:
+    math_marks = len(re.findall(r"[_^=→←↔≤≥≠∈∉∑∏∫√±≈∂(),:]", text))
+    alpha_tokens = len(re.findall(r"[A-Za-z]+", text))
+    return math_marks >= 4 and alpha_tokens <= 10
+
+
+def is_math_font(font_name: str) -> bool:
+    upper = font_name.upper()
+    return (
+        upper.startswith("CM")
+        or "MATH" in upper
+        or "SYMBOL" in upper
+        or "MTEXTRA" in upper
+        or "STIX" in upper
+    )
+
+
+def count_smaller_formula_spans(spans: list[dict[str, Any]]) -> int:
+    sizes = [float(span.get("size", 0) or 0) for span in spans]
+    positive = [size for size in sizes if size > 0]
+    if len(positive) < 2:
+        return 0
+    largest = max(positive)
+    return sum(1 for size in positive if size <= largest * 0.78)
+
+
 def split_text(text: str, max_words: int) -> list[str]:
     words = text.split()
     if len(words) <= max_words:
@@ -620,6 +717,12 @@ def merge_text_blocks(blocks: list[TextBlock]) -> list[TextBlock]:
     current: TextBlock | None = None
 
     for block in blocks:
+        if block.kind != "text":
+            if current is not None:
+                merged.append(current)
+                current = None
+            merged.append(block)
+            continue
         if current is None:
             current = block
             continue
@@ -639,6 +742,8 @@ def merge_text_blocks(blocks: list[TextBlock]) -> list[TextBlock]:
 
 
 def should_merge_text_blocks(first: TextBlock, second: TextBlock) -> bool:
+    if first.kind != "text" or second.kind != "text":
+        return False
     if first.page != second.page:
         return False
     if looks_like_heading(first.text) or looks_like_heading(second.text):

@@ -57,3 +57,4 @@ def test_renderer_outputs_standalone_data_uri() -> None:
     assert 'id="fontSize"' in html
     assert "--reader-font-size" in html
     assert "pdf-card-reader-font-size" in html
+    assert "totalFormulas" in html

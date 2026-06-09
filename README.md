@@ -2,8 +2,8 @@
 
 PDF Card MCP is a local-first MCP tool that converts dense PDFs into soft, minimal,
 card-based HTML readers. It preserves source text, renders source pages, crops detected
-tables and figures as images, and writes a standalone HTML file that can be moved across
-devices without losing assets.
+tables, figures, and display formulas as images, and writes a standalone HTML file that
+can be moved across devices without losing assets.
 
 The default reader is designed for comfortable reading: large type, small cards, search,
 section navigation, next/previous controls, keyboard navigation, a font-size slider, and
@@ -40,7 +40,7 @@ pdf-card-mcp path/to/document.pdf --output examples/out/document.html
 The command writes:
 
 - `document.html`: standalone reader with embedded CSS, JavaScript, table crops, figure crops,
-  and source-page images.
+  formula crops, and source-page images.
 - `document.manifest.json`: structured metadata without embedded image payloads.
 
 ## MCP Tool
@@ -99,6 +99,12 @@ survive conversion.
 
 If a document mentions tables but no reliable table regions are found, the manifest includes a
 warning so callers can decide whether to inspect the source pages.
+
+## How Formulas Are Handled
+
+Display formulas are treated as image cards when the PDF exposes them as centered, formula-like
+text blocks. The extracted formula string is retained for alt/search metadata, but the reader
+shows the source crop so subscripts, superscripts, arrows, and math spacing remain faithful.
 
 ## License
 

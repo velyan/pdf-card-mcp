@@ -208,6 +208,7 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .card.table {{ border-color: rgba(118, 99, 116, 0.45); }}
 .card.figure {{ border-color: rgba(111, 131, 110, 0.54); }}
+.card.formula {{ border-color: rgba(169, 131, 77, 0.42); }}
 .card.heading {{
   box-shadow: none;
   background: transparent;
@@ -288,6 +289,18 @@ button:hover, button:focus-visible, input:focus-visible {{
   width: 100%;
   height: auto;
   min-width: min(760px, 100%);
+}}
+.card.formula .asset-wrap {{
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 10px 16px;
+}}
+.card.formula .asset-wrap img {{
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 auto;
 }}
 .card-footer {{
   display: flex;
@@ -393,7 +406,7 @@ mark {{
   <aside class="rail">
     <div class="brand">
       <h1>{title}</h1>
-      <p><span id="totalCards">0</span> cards · <span id="totalTables">0</span> tables · <span id="totalFigures">0</span> figures</p>
+      <p><span id="totalCards">0</span> cards · <span id="totalTables">0</span> tables · <span id="totalFigures">0</span> figures · <span id="totalFormulas">0</span> formulas</p>
     </div>
     <div class="controls">
       <button id="prevBtn" type="button">Previous</button>
@@ -414,7 +427,7 @@ mark {{
   <main class="content">
     <header class="masthead">
       <h2>{title}</h2>
-      <p>Standalone reader generated from a local PDF. Tables and figures are preserved as embedded images.</p>
+      <p>Standalone reader generated from a local PDF. Tables, figures, and formulas are preserved as embedded images.</p>
     </header>
     <section id="cards" class="cards" aria-live="polite"></section>
     <div id="empty" class="empty">No cards match this search.</div>
@@ -451,6 +464,7 @@ const modalTitleEl = document.getElementById("modalTitle");
 document.getElementById("totalCards").textContent = String(payload.card_count);
 document.getElementById("totalTables").textContent = String(payload.table_count);
 document.getElementById("totalFigures").textContent = String(payload.figure_count);
+document.getElementById("totalFormulas").textContent = String(payload.formula_count || 0);
 
 function setFontSize(value) {{
   const size = Math.max(18, Math.min(32, Number(value) || 22));
@@ -516,6 +530,7 @@ function cardSearchText(card) {{
 function contentLabel(kind) {{
   if (kind === "table") return "Table";
   if (kind === "figure") return "Figure";
+  if (kind === "formula") return "Formula";
   return "";
 }}
 
@@ -552,8 +567,9 @@ function renderCard(card, index) {{
   let body = "";
   if (asset) {{
     const caption = asset.caption || card.text || asset.alt;
+    const captionHtml = card.kind === "formula" ? "" : `<p class="caption">${{highlighted(caption)}}</p>`;
     body = `
-      <p class="caption">${{highlighted(caption)}}</p>
+      ${{captionHtml}}
       <div class="asset-wrap">
         <img loading="lazy" src="${{asset.data_uri}}" width="${{asset.width}}" height="${{asset.height}}" alt="${{escapeHtml(asset.alt || caption)}}">
       </div>`;

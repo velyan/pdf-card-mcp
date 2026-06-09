@@ -215,13 +215,13 @@ h1 {
   <section class="hero">
     <div class="kicker">PDF Card MCP</div>
     <h1>How a dense PDF becomes a readable card reader</h1>
-    <p>The tool keeps the PDF local, renders visual material as images, extracts body text into cards, and then removes text that already belongs inside a table or figure crop.</p>
+    <p>The tool keeps the PDF local, renders visual material as images, extracts body text into cards, and then removes text that already belongs inside a table, figure, or formula crop.</p>
   </section>
 
   <section class="flow" aria-label="Conversion pipeline">
     <article class="step"><div class="num">1</div><h2>Open PDF</h2><p>PyMuPDF and pdfplumber read the same pages so text, images, tables, and coordinates can be compared.</p></article>
     <article class="step"><div class="num">2</div><h2>Render Pages</h2><p>Each source page becomes an embedded PNG for the source-page modal.</p></article>
-    <article class="step"><div class="num">3</div><h2>Find Assets</h2><p>Captions, table boxes, embedded images, and vector regions become table or figure crops.</p></article>
+    <article class="step"><div class="num">3</div><h2>Find Assets</h2><p>Captions, table boxes, embedded images, vector regions, and display equations become image crops.</p></article>
     <article class="step"><div class="num">4</div><h2>Suppress Overlap</h2><p>Text blocks inside asset regions are removed from body cards so diagram labels do not duplicate.</p></article>
     <article class="step"><div class="num">5</div><h2>Merge Text</h2><p>Nearby body blocks are joined before splitting into digestible cards.</p></article>
     <article class="step"><div class="num">6</div><h2>Write HTML</h2><p>The reader is one standalone file with embedded images, search, navigation, and font-size controls.</p></article>
@@ -240,10 +240,11 @@ h1 {
     </article>
     <article class="panel">
       <h2>What the reader tries to do</h2>
-      <p>Keep tables and figures visible as images, but use geometry to avoid duplicating their internal labels as separate cards.</p>
+      <p>Keep tables, figures, and formulas visible as images, but use geometry to avoid duplicating their internal labels as separate cards.</p>
       <div class="cards-demo">
         <div class="reader-card"><span class="tag">Figure</span><strong>Figure card</strong><p>One crop with caption and source-page link.</p></div>
-        <div class="reader-card"><strong>Body card</strong><p>Only prose outside the figure/table region.</p></div>
+        <div class="reader-card"><span class="tag">Formula</span><strong>Formula card</strong><p>One tight equation crop so math layout stays faithful.</p></div>
+        <div class="reader-card"><strong>Body card</strong><p>Only prose outside the asset crop region.</p></div>
       </div>
     </article>
   </section>

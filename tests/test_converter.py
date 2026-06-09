@@ -70,6 +70,29 @@ def make_figure_pdf(path: Path) -> None:
     document.close()
 
 
+def make_formula_pdf(path: Path) -> None:
+    document = fitz.open()
+    page = document.new_page(width=612, height=792)
+    page.insert_text((72, 72), "Sample Formula Paper", fontsize=18)
+    page.insert_text(
+        (72, 120),
+        "The transition function is represented below.",
+        fontsize=12,
+    )
+    page.insert_text(
+        (220, 166),
+        "f_t : (C_current, x) -> (C_new, y),",
+        fontsize=12,
+    )
+    page.insert_text(
+        (72, 214),
+        "The screenshot should preserve the equation layout.",
+        fontsize=12,
+    )
+    document.save(path)
+    document.close()
+
+
 def test_converter_embeds_detected_tables_as_images(tmp_path: Path) -> None:
     pdf_path = tmp_path / "sample-table.pdf"
     html_path = tmp_path / "reader.html"
@@ -117,6 +140,30 @@ def test_converter_embeds_captioned_vector_figures_as_images(tmp_path: Path) -> 
     assert "1" not in paragraph_texts
     assert not any(text.startswith("arXiv:") for text in paragraph_texts)
     assert not any(text.startswith("*Equal contribution") for text in paragraph_texts)
+
+
+def test_converter_embeds_display_formulas_as_images(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "sample-formula.pdf"
+    html_path = tmp_path / "formula-reader.html"
+    make_formula_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Formula Sample")
+
+    assert result.formula_count >= 1
+    html = html_path.read_text(encoding="utf-8")
+    assert '"kind": "formula"' in html
+    assert "Formula" in html
+    assert "data:image/png;base64" in html
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["formula_count"] >= 1
+    assert any(asset["kind"] == "formula" for asset in manifest["assets"])
+    paragraph_texts = [
+        card["text"]
+        for card in manifest["cards"]
+        if card["kind"] == "paragraph"
+    ]
+    assert not any("C_current" in text for text in paragraph_texts)
 
 
 def test_converter_reports_missing_pdf(tmp_path: Path) -> None:
