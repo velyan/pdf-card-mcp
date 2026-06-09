@@ -1,0 +1,11 @@
+.git/
+.github/
+.venv/
+.pytest_cache/
+.ruff_cache/
+tests/
+examples/out/
+dist/
+build/
+*.egg-info/
+*.mcpb

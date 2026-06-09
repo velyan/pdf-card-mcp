@@ -1,0 +1,557 @@
+from __future__ import annotations
+
+import html
+import json
+
+from .models import ConversionManifest
+
+
+def render_html(manifest: ConversionManifest) -> str:
+    payload = manifest.to_dict(include_data=True)
+    payload_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    title = html.escape(manifest.title)
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+:root {{
+  color-scheme: light;
+  --bg: #f8f4f1;
+  --paper: #fffdf9;
+  --paper-soft: #fbf0f3;
+  --ink: #272423;
+  --muted: #746e6a;
+  --line: #ddd3ce;
+  --rose: #b75f78;
+  --rose-soft: #f7dfe7;
+  --sage: #708c76;
+  --sage-soft: #e8efe6;
+  --plum: #735269;
+  --plum-soft: #eee3eb;
+  --gold: #b4894a;
+  --shadow: 0 12px 30px rgba(61, 45, 39, 0.10);
+}}
+* {{ box-sizing: border-box; }}
+html {{ scroll-behavior: smooth; }}
+body {{
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 249, 0.72), rgba(248, 244, 241, 0.96)),
+    var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}}
+button, input {{ font: inherit; }}
+button {{
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}}
+button:hover, button:focus-visible, input:focus-visible {{
+  border-color: var(--rose);
+  outline: 3px solid rgba(183, 95, 120, 0.16);
+  outline-offset: 1px;
+}}
+.shell {{
+  display: grid;
+  grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
+  min-height: 100vh;
+}}
+.rail {{
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+  padding: 22px 18px;
+  border-right: 1px solid var(--line);
+  background: rgba(255, 253, 249, 0.78);
+  backdrop-filter: blur(14px);
+}}
+.brand h1 {{
+  margin: 0;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 25px;
+  line-height: 1.12;
+  letter-spacing: 0;
+}}
+.brand p {{
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}}
+.controls {{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 18px 0 12px;
+}}
+.search {{
+  width: 100%;
+  min-height: 42px;
+  margin-bottom: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+}}
+.meter {{
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ebe2dd;
+}}
+.meter span {{
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--rose);
+  transition: width 160ms ease;
+}}
+.counter {{
+  margin: 8px 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+}}
+.sections {{
+  display: grid;
+  gap: 8px;
+}}
+.sections button {{
+  width: 100%;
+  padding: 9px 10px;
+  text-align: left;
+  background: rgba(255, 253, 249, 0.78);
+}}
+.sections button.active {{
+  border-color: var(--rose);
+  background: var(--rose-soft);
+  color: #6d2d43;
+}}
+.content {{
+  min-width: 0;
+  padding: 32px clamp(16px, 5vw, 72px) 76px;
+}}
+.masthead {{
+  max-width: 1050px;
+  margin: 0 auto 24px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}}
+.masthead h2 {{
+  margin: 0;
+  max-width: 950px;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: clamp(31px, 5vw, 58px);
+  line-height: 1.04;
+  letter-spacing: 0;
+}}
+.masthead p {{
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.45;
+}}
+.cards {{
+  display: grid;
+  gap: 18px;
+  max-width: 1050px;
+  margin: 0 auto;
+}}
+.card {{
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 249, 0.94);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}}
+.card.table {{ border-color: rgba(183, 95, 120, 0.58); }}
+.card.figure {{ border-color: rgba(112, 140, 118, 0.62); }}
+.card.heading {{
+  box-shadow: none;
+  background: transparent;
+  border-color: transparent;
+}}
+.card-header {{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px 0;
+}}
+.eyebrow {{
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}}
+.badge {{
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--sage-soft);
+  color: #4f6654;
+  font-size: 13px;
+}}
+.card-body {{
+  padding: 14px 16px 16px;
+}}
+.card.heading .card-body {{
+  padding: 18px 0 2px;
+}}
+.card.heading h3 {{
+  margin: 0;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: clamp(27px, 4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}}
+.text {{
+  margin: 0;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: clamp(21px, 2.2vw, 29px);
+  line-height: 1.48;
+  letter-spacing: 0;
+}}
+.caption {{
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.45;
+}}
+.asset-wrap {{
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}}
+.asset-wrap img {{
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: min(760px, 100%);
+}}
+.actions {{
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px 16px;
+}}
+.empty {{
+  display: none;
+  max-width: 680px;
+  margin: 40px auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 18px;
+}}
+.modal {{
+  position: fixed;
+  inset: 0;
+  display: none;
+  place-items: center;
+  z-index: 20;
+  padding: 22px;
+  background: rgba(39, 36, 35, 0.54);
+}}
+.modal.open {{ display: grid; }}
+.modal-panel {{
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 30px 80px rgba(39, 36, 35, 0.32);
+  overflow: hidden;
+}}
+.modal-head {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}}
+.modal-body {{
+  overflow: auto;
+  background: #efebe7;
+}}
+.modal-body img {{
+  display: block;
+  width: 100%;
+  height: auto;
+}}
+mark {{
+  background: #f7e6a8;
+  color: inherit;
+}}
+@media (max-width: 820px) {{
+  .shell {{ display: block; }}
+  .rail {{
+    position: sticky;
+    z-index: 5;
+    height: auto;
+    max-height: 56vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }}
+  .sections {{
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }}
+  .sections button {{
+    min-width: max-content;
+  }}
+  .content {{ padding-top: 22px; }}
+  .asset-wrap img {{ min-width: 620px; }}
+}}
+@media (prefers-reduced-motion: reduce) {{
+  html {{ scroll-behavior: auto; }}
+  * {{ transition: none !important; }}
+}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">
+      <h1>{title}</h1>
+      <p><span id="totalCards">0</span> cards · <span id="totalTables">0</span> tables · <span id="totalFigures">0</span> figures</p>
+    </div>
+    <div class="controls">
+      <button id="prevBtn" type="button">Previous</button>
+      <button id="nextBtn" type="button">Next</button>
+    </div>
+    <input id="search" class="search" type="search" placeholder="Search the document" aria-label="Search the document">
+    <div class="meter" aria-hidden="true"><span id="meter"></span></div>
+    <div id="counter" class="counter">Card 0 of 0</div>
+    <nav id="sections" class="sections" aria-label="Sections"></nav>
+  </aside>
+  <main class="content">
+    <header class="masthead">
+      <h2>{title}</h2>
+      <p>Standalone reader generated from a local PDF. Tables and figures are preserved as embedded images.</p>
+    </header>
+    <section id="cards" class="cards" aria-live="polite"></section>
+    <div id="empty" class="empty">No cards match this search.</div>
+  </main>
+</div>
+<div id="modal" class="modal" role="dialog" aria-modal="true" aria-label="Source page">
+  <div class="modal-panel">
+    <div class="modal-head">
+      <strong id="modalTitle">Source page</strong>
+      <button id="closeModal" type="button">Close</button>
+    </div>
+    <div class="modal-body"><img id="modalImage" alt="Source page"></div>
+  </div>
+</div>
+<script>
+const payload = {payload_json};
+const assetMap = new Map(payload.assets.map(asset => [asset.id, asset]));
+const cards = payload.cards;
+let filtered = [...cards];
+let activeIndex = 0;
+
+const cardsEl = document.getElementById("cards");
+const emptyEl = document.getElementById("empty");
+const searchEl = document.getElementById("search");
+const counterEl = document.getElementById("counter");
+const meterEl = document.getElementById("meter");
+const sectionsEl = document.getElementById("sections");
+const modalEl = document.getElementById("modal");
+const modalImageEl = document.getElementById("modalImage");
+const modalTitleEl = document.getElementById("modalTitle");
+
+document.getElementById("totalCards").textContent = String(payload.card_count);
+document.getElementById("totalTables").textContent = String(payload.table_count);
+document.getElementById("totalFigures").textContent = String(payload.figure_count);
+
+function uniqueSections() {{
+  const seen = new Set();
+  return cards.map(card => card.section || "Document").filter(section => {{
+    if (seen.has(section)) return false;
+    seen.add(section);
+    return true;
+  }});
+}}
+
+function escapeHtml(value) {{
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}}
+
+function highlighted(text) {{
+  const query = searchEl.value.trim();
+  const safe = escapeHtml(text || "");
+  if (!query) return safe;
+  const escapedQuery = query.replace(/[.*+?^${{}}()|[\\]\\\\]/g, "\\\\$&");
+  return safe.replace(new RegExp(`(${{escapedQuery}})`, "ig"), "<mark>$1</mark>");
+}}
+
+function renderSections() {{
+  sectionsEl.innerHTML = "";
+  for (const section of uniqueSections()) {{
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = section;
+    button.addEventListener("click", () => {{
+      const target = filtered.findIndex(card => (card.section || "Document") === section);
+      if (target >= 0) scrollToIndex(target);
+    }});
+    sectionsEl.appendChild(button);
+  }}
+}}
+
+function cardSearchText(card) {{
+  const asset = card.image_id ? assetMap.get(card.image_id) : null;
+  return [card.text, card.section, asset?.caption, asset?.alt].filter(Boolean).join(" ").toLowerCase();
+}}
+
+function applyFilter() {{
+  const query = searchEl.value.trim().toLowerCase();
+  filtered = query ? cards.filter(card => cardSearchText(card).includes(query)) : [...cards];
+  activeIndex = 0;
+  renderCards();
+}}
+
+function renderCards() {{
+  cardsEl.innerHTML = "";
+  emptyEl.style.display = filtered.length ? "none" : "block";
+  filtered.forEach((card, index) => cardsEl.appendChild(renderCard(card, index)));
+  updatePosition();
+}}
+
+function renderCard(card, index) {{
+  const article = document.createElement("article");
+  article.className = `card ${{card.kind}}`;
+  article.id = card.id;
+  article.dataset.index = String(index);
+  article.dataset.section = card.section || "Document";
+
+  const asset = card.image_id ? assetMap.get(card.image_id) : null;
+  const sourceAsset = card.source_image_id ? assetMap.get(card.source_image_id) : null;
+  const label = card.kind === "paragraph" ? "Text" : card.kind;
+  const badge = `Page ${{card.page}}`;
+
+  if (card.kind === "heading") {{
+    article.innerHTML = `<div class="card-body"><h3>${{highlighted(card.text)}}</h3></div>`;
+    return article;
+  }}
+
+  let body = "";
+  if (asset) {{
+    const caption = asset.caption || card.text || asset.alt;
+    body = `
+      <p class="caption">${{highlighted(caption)}}</p>
+      <div class="asset-wrap">
+        <img loading="lazy" src="${{asset.data_uri}}" width="${{asset.width}}" height="${{asset.height}}" alt="${{escapeHtml(asset.alt || caption)}}">
+      </div>`;
+  }} else {{
+    body = `<p class="text">${{highlighted(card.text)}}</p>`;
+  }}
+
+  const sourceButton = sourceAsset
+    ? `<button type="button" data-source="${{sourceAsset.id}}">Source page</button>`
+    : "";
+
+  article.innerHTML = `
+    <div class="card-header">
+      <div class="eyebrow">${{escapeHtml(label)}}</div>
+      <div class="badge">${{escapeHtml(badge)}}</div>
+    </div>
+    <div class="card-body">${{body}}</div>
+    <div class="actions">${{sourceButton}}</div>`;
+
+  const button = article.querySelector("[data-source]");
+  if (button) {{
+    button.addEventListener("click", () => openSource(sourceAsset));
+  }}
+  return article;
+}}
+
+function openSource(asset) {{
+  modalImageEl.removeAttribute("src");
+  modalImageEl.src = asset.data_uri;
+  modalImageEl.alt = asset.alt;
+  modalTitleEl.textContent = `Source page ${{asset.page}}`;
+  modalEl.classList.add("open");
+}}
+
+function closeSource() {{
+  modalEl.classList.remove("open");
+  modalImageEl.removeAttribute("src");
+}}
+
+function updatePosition() {{
+  const total = filtered.length;
+  const current = total ? activeIndex + 1 : 0;
+  counterEl.textContent = `Card ${{current}} of ${{total}}`;
+  meterEl.style.width = total ? `${{(current / total) * 100}}%` : "0";
+
+  const active = filtered[activeIndex];
+  const activeSection = active?.section || "";
+  for (const button of sectionsEl.querySelectorAll("button")) {{
+    button.classList.toggle("active", button.textContent === activeSection);
+  }}
+}}
+
+function scrollToIndex(index) {{
+  if (!filtered.length) return;
+  activeIndex = Math.max(0, Math.min(index, filtered.length - 1));
+  const card = cardsEl.querySelector(`[data-index="${{activeIndex}}"]`);
+  if (card) card.scrollIntoView({{ behavior: "smooth", block: "center" }});
+  updatePosition();
+}}
+
+document.getElementById("prevBtn").addEventListener("click", () => scrollToIndex(activeIndex - 1));
+document.getElementById("nextBtn").addEventListener("click", () => scrollToIndex(activeIndex + 1));
+document.getElementById("closeModal").addEventListener("click", closeSource);
+modalEl.addEventListener("click", event => {{
+  if (event.target === modalEl) closeSource();
+}});
+searchEl.addEventListener("input", applyFilter);
+document.addEventListener("keydown", event => {{
+  if (event.key === "Escape" && modalEl.classList.contains("open")) closeSource();
+  if (event.key === "ArrowRight" && !modalEl.classList.contains("open")) scrollToIndex(activeIndex + 1);
+  if (event.key === "ArrowLeft" && !modalEl.classList.contains("open")) scrollToIndex(activeIndex - 1);
+}});
+
+const observer = new IntersectionObserver(entries => {{
+  const visible = entries
+    .filter(entry => entry.isIntersecting)
+    .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+  if (!visible) return;
+  activeIndex = Number(visible.target.dataset.index || 0);
+  updatePosition();
+}}, {{ threshold: [0.35, 0.6, 0.9] }});
+
+renderSections();
+renderCards();
+for (const card of cardsEl.children) observer.observe(card);
+</script>
+</body>
+</html>
+"""

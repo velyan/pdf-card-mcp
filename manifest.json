@@ -1,0 +1,34 @@
+{
+  "manifest_version": "0.4",
+  "name": "pdf-card-mcp",
+  "display_name": "PDF Card Reader",
+  "version": "0.1.0",
+  "description": "Convert local PDFs into standalone, readable card-based HTML pages with embedded table and figure images.",
+  "long_description": "PDF Card Reader is a local-first MCP tool for turning dense PDFs into calm, minimal HTML readers. It keeps text local, renders source pages, crops detected tables and figures as images, and writes a standalone HTML file that can be moved across devices.",
+  "author": {
+    "name": "PDF Card MCP Contributors"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/pdf-card-mcp.git"
+  },
+  "license": "MIT",
+  "keywords": ["pdf", "html", "reader", "tables", "accessibility", "local-first"],
+  "server": {
+    "type": "uv",
+    "entry_point": "src/pdf_card_mcp/server.py"
+  },
+  "tools": [
+    {
+      "name": "convert_pdf_to_card_html",
+      "description": "Convert a local PDF into a standalone card-based HTML reader with embedded table and figure images."
+    }
+  ],
+  "tools_generated": false,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  }
+}
