@@ -226,30 +226,38 @@ class PdfCardConverter:
         for caption_index, caption in enumerate(caption_lines, start=1):
             near_indexes = nearby_table_indexes(caption_index - 1, caption_bboxes, tables)
             consumed_table_indexes.update(near_indexes)
-            plumber_bbox = union_bboxes(
-                [caption["bbox"], *[tables[index].bbox for index in near_indexes]]
+            plumber_bbox = (
+                union_bboxes([tables[index].bbox for index in near_indexes])
+                if near_indexes
+                else None
             )
+            heuristic_bbox = heuristic_table_bbox(caption["bbox"], plumber_page, words)
+            if plumber_bbox is not None and heuristic_bbox is not None:
+                plumber_bbox = union_bboxes([plumber_bbox, heuristic_bbox])
             if len(near_indexes) == 0:
-                heuristic_bbox = heuristic_table_bbox(caption["bbox"], plumber_page, words)
                 if heuristic_bbox is None:
                     self.warnings.append(
                         f"Page {page_number}: found table caption but could not infer crop: "
                         f"{caption['text'][:80]}"
                     )
                     continue
-                plumber_bbox = union_bboxes([caption["bbox"], heuristic_bbox])
+                plumber_bbox = heuristic_bbox
                 self.warnings.append(
                     f"Page {page_number}: used heuristic crop for table caption "
                     f"'{caption['text'][:80]}'."
                 )
+            if plumber_bbox is None:
+                continue
 
             bbox = self._scale_plumber_bbox(plumber_bbox, plumber_page, fitz_page)
+            caption_region = self._scale_plumber_bbox(caption["bbox"], plumber_page, fitz_page)
+            suppression_bbox = union_bboxes([caption_region, bbox])
             if any(overlap_ratio(bbox, region) > 0.65 for region in table_regions):
                 continue
             if not valid_bbox(bbox, fitz_page.rect):
                 self.warnings.append(f"Page {page_number}: skipped invalid table bbox {plumber_bbox}.")
                 continue
-            table_regions.append(bbox)
+            table_regions.append(suppression_bbox)
             self._append_cropped_asset_card(
                 fitz_page=fitz_page,
                 page_number=page_number,
@@ -939,21 +947,95 @@ def heuristic_table_bbox(
     page: pdfplumber.page.Page,
     words: list[dict[str, Any]] | None = None,
 ) -> BBox | None:
-    x0 = max(0.0, page.width * 0.05)
-    x1 = min(float(page.width), page.width * 0.95)
     caption_top = caption_bbox[1]
     caption_bottom = caption_bbox[3]
+    content_bbox = infer_table_content_bbox(caption_bbox, page, words)
+    if content_bbox is not None:
+        return content_bbox
+
+    x0, _, x1, _ = infer_caption_column_bbox(caption_bbox, page)
     # Most papers place table captions above the table. If the caption is too low,
     # crop above it instead of off the page.
     if caption_bottom < page.height * 0.72:
-        top = max(0.0, caption_top - 8)
+        top = min(float(page.height), caption_bottom + 8)
         bottom = infer_content_bottom_after_caption(caption_bbox, page, words)
     else:
         top = max(0.0, caption_top - min(260.0, page.height * 0.34))
-        bottom = min(float(page.height), caption_bottom + 8)
+        bottom = max(0.0, caption_top - 8)
     if bottom - top < 36:
         return None
     return (x0, top, x1, bottom)
+
+
+def infer_table_content_bbox(
+    caption_bbox: BBox,
+    page: pdfplumber.page.Page,
+    words: list[dict[str, Any]] | None,
+) -> BBox | None:
+    if not words:
+        return None
+
+    column_bbox = infer_caption_column_bbox(caption_bbox, page)
+    caption_bottom = caption_bbox[3]
+    default_bottom = min(float(page.height), caption_bottom + min(230.0, page.height * 0.30))
+    candidate_words = [
+        word
+        for word in words
+        if caption_bottom + 4 < float(word.get("top", 0)) < default_bottom
+        and point_in_bbox(
+            (
+                (float(word["x0"]) + float(word["x1"])) / 2,
+                (float(word["top"]) + float(word["bottom"])) / 2,
+            ),
+            column_bbox,
+        )
+    ]
+    lines = group_words_into_lines(candidate_words)
+    content_boxes: list[BBox] = []
+    last_bottom = 0.0
+    prose_table_mode = False
+
+    for line in lines:
+        line_top = float(line["bbox"][1])
+        line_bottom = float(line["bbox"][3])
+        if starts_new_caption(line["text"]) and line_top > caption_bottom + 22:
+            break
+        if content_boxes and line_top - last_bottom > 18:
+            break
+        if line_is_tableish(line["text"]):
+            if re.search(r"\b(Example|Task)\b", line["text"], re.IGNORECASE):
+                prose_table_mode = True
+            content_boxes.append(line["bbox"])
+            last_bottom = line_bottom
+            continue
+        if content_boxes and line_is_body_boundary(line["text"]) and not prose_table_mode:
+            break
+        if content_boxes:
+            content_boxes.append(line["bbox"])
+            last_bottom = line_bottom
+
+    if not content_boxes:
+        return None
+
+    content = union_bboxes(content_boxes)
+    x0 = max(column_bbox[0], content[0] - 8)
+    top = max(0.0, content[1] - 8)
+    x1 = min(column_bbox[2], content[2] + 8)
+    bottom = min(float(page.height), content[3] + 8)
+    if x1 - x0 < 80 or bottom - top < 30:
+        return None
+    return (x0, top, x1, bottom)
+
+
+def infer_caption_column_bbox(caption_bbox: BBox, page: pdfplumber.page.Page) -> BBox:
+    margin_x = page.width * 0.05
+    caption_width = caption_bbox[2] - caption_bbox[0]
+    caption_center = (caption_bbox[0] + caption_bbox[2]) / 2
+    if caption_width < page.width * 0.45:
+        if caption_center < page.width / 2:
+            return (margin_x, 0.0, page.width * 0.49, float(page.height))
+        return (page.width * 0.51, 0.0, page.width - margin_x, float(page.height))
+    return (margin_x, 0.0, page.width - margin_x, float(page.height))
 
 
 def infer_content_bottom_after_caption(
@@ -1006,7 +1088,7 @@ def line_is_tableish(text: str) -> bool:
     token_count = len(cleaned.split())
     has_table_terms = bool(
         re.search(
-            r"\b(Model|Acc|F1|Cost|Latency|Version|Server|Tool|Method|Dataset|Benchmark|Score)\b",
+            r"\b(Model|Acc|F1|Cost|Latency|Version|Server|Tool|Method|Dataset|Benchmark|Score|Task|Example)\b",
             cleaned,
             re.IGNORECASE,
         )
@@ -1022,9 +1104,15 @@ def line_is_body_boundary(text: str) -> bool:
         return True
     if line_is_tableish(cleaned):
         return False
-    starts_like_prose = bool(re.match(r"^(The|This|These|We|In|For|As|Our|To|It)\b", cleaned))
+    starts_like_prose = bool(
+        re.match(
+            r"^(A|An|The|This|These|We|In|For|As|Our|To|It|However|Overall|Results?)\b",
+            cleaned,
+            re.IGNORECASE,
+        )
+    )
     sentence_like = bool(re.search(r"[.!?]$", cleaned))
-    return token_count >= 8 and (starts_like_prose or sentence_like)
+    return token_count >= 8 and (starts_like_prose or sentence_like or "," in cleaned)
 
 
 def heuristic_figure_bbox(caption_bbox: BBox, page: pdfplumber.page.Page) -> BBox | None:

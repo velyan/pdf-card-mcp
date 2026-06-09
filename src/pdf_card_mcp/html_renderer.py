@@ -279,6 +279,9 @@ button:hover, button:focus-visible, input:focus-visible {{
   line-height: 1.45;
 }}
 .asset-wrap {{
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -286,20 +289,18 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .asset-wrap img {{
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
-  min-width: min(760px, 100%);
+  min-width: 0;
+  margin: 0 auto;
 }}
 .card.formula .asset-wrap {{
   width: fit-content;
-  max-width: 100%;
   margin: 0 auto;
   padding: 10px 16px;
 }}
 .card.formula .asset-wrap img {{
-  width: auto;
-  max-width: 100%;
-  min-width: 0;
   margin: 0 auto;
 }}
 .card-footer {{
@@ -393,7 +394,7 @@ mark {{
     min-width: max-content;
   }}
   .content {{ padding-top: 22px; }}
-  .asset-wrap img {{ min-width: 620px; }}
+  .asset-wrap img {{ min-width: 0; }}
 }}
 @media (prefers-reduced-motion: reduce) {{
   html {{ scroll-behavior: auto; }}

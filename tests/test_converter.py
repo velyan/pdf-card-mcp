@@ -54,6 +54,38 @@ def make_table_pdf(path: Path) -> None:
     document.close()
 
 
+def make_column_table_pdf(path: Path) -> None:
+    document = fitz.open()
+    page = document.new_page(width=612, height=792)
+    page.insert_text((72, 72), "Two Column Table Paper", fontsize=18)
+    page.insert_text((72, 126), "Table 1. Ablation study on candidate settings.", fontsize=11)
+    rows = [
+        ("Model", "All", "Selected"),
+        ("GPT-5", "41.04", "46.23"),
+        ("Gemini", "20.23", "11.79"),
+        ("Qwen", "40.46", "47.64"),
+    ]
+    y = 158
+    for model, all_tools, selected in rows:
+        page.insert_text((72, y), model, fontsize=10)
+        page.insert_text((170, y), all_tools, fontsize=10)
+        page.insert_text((230, y), selected, fontsize=10)
+        y += 18
+    page.insert_text(
+        (330, 158),
+        "This neighboring prose should not be included in the table crop.",
+        fontsize=12,
+    )
+    page.insert_text(
+        (330, 176),
+        "It sits in the right column beside the table.",
+        fontsize=12,
+    )
+    page.insert_text((72, 252), "Body text resumes below the table.", fontsize=12)
+    document.save(path)
+    document.close()
+
+
 def make_figure_pdf(path: Path) -> None:
     document = fitz.open()
     page = document.new_page(width=612, height=792)
@@ -115,6 +147,23 @@ def test_converter_embeds_detected_tables_as_images(tmp_path: Path) -> None:
     assert manifest["table_count"] >= 1
     assert any(asset["kind"] == "table" for asset in manifest["assets"])
     assert all("data_uri" not in asset for asset in manifest["assets"])
+
+
+def test_heuristic_table_crop_excludes_neighboring_column_text(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "column-table.pdf"
+    html_path = tmp_path / "column-reader.html"
+    make_column_table_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Columns")
+
+    assert result.table_count >= 1
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    table_asset = next(asset for asset in manifest["assets"] if asset["kind"] == "table")
+    x0, top, x1, bottom = table_asset["bbox"]
+    assert x0 < 75
+    assert x1 < 310
+    assert top > 126
+    assert bottom < 245
 
 
 def test_converter_embeds_captioned_vector_figures_as_images(tmp_path: Path) -> None:
