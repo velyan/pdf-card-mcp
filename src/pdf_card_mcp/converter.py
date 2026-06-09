@@ -226,7 +226,7 @@ class PdfCardConverter:
                 [caption["bbox"], *[tables[index].bbox for index in near_indexes]]
             )
             if len(near_indexes) == 0:
-                heuristic_bbox = heuristic_table_bbox(caption["bbox"], plumber_page)
+                heuristic_bbox = heuristic_table_bbox(caption["bbox"], plumber_page, words)
                 if heuristic_bbox is None:
                     self.warnings.append(
                         f"Page {page_number}: found table caption but could not infer crop: "
@@ -319,8 +319,7 @@ class PdfCardConverter:
 
             plumber_bbox = union_bboxes(candidate_boxes)
             bbox = self._scale_plumber_bbox(plumber_bbox, plumber_page, fitz_page)
-            if any(overlap_ratio(bbox, table_bbox) > 0.18 for table_bbox in table_regions):
-                continue
+            bbox = trim_bbox_around_blockers(bbox, table_regions, caption["bbox"])
             if not valid_bbox(bbox, fitz_page.rect):
                 self.warnings.append(f"Page {page_number}: skipped invalid figure bbox {plumber_bbox}.")
                 continue
@@ -374,7 +373,7 @@ class PdfCardConverter:
             text = normalize_block_lines(lines)
             if text and not is_metadata_or_noise(text, page_number, document_title):
                 text_blocks.append(TextBlock(page=page_number, bbox=bbox, text=text))
-        return text_blocks
+        return merge_text_blocks(text_blocks)
 
     def _ocr_page(self, source_asset: ImageAsset, page_number: int) -> list[TextBlock]:
         try:
@@ -556,7 +555,13 @@ def is_metadata_or_noise(text: str, page_number: int, document_title: str) -> bo
         return True
     if re.fullmatch(r"\d{1,4}", cleaned):
         return True
-    if page_number > 1 and normalized_key(cleaned) == normalized_key(document_title):
+    if normalized_key(cleaned) == normalized_key(document_title):
+        return True
+    if cleaned.startswith("*Equal contribution"):
+        return True
+    if "Correspondence to:" in cleaned:
+        return True
+    if "Project lead" in cleaned and re.search(r"\bUniversity\b|\bInstitute\b|\bCollege\b", cleaned):
         return True
     if re.match(r"^arXiv:\d{4}\.\d+(?:v\d+)?\b", cleaned, re.IGNORECASE):
         return True
@@ -608,6 +613,72 @@ def split_text(text: str, max_words: int) -> list[str]:
         for start in range(0, len(tokens), max_words):
             final.append(" ".join(tokens[start : start + max_words]))
     return final
+
+
+def merge_text_blocks(blocks: list[TextBlock]) -> list[TextBlock]:
+    merged: list[TextBlock] = []
+    current: TextBlock | None = None
+
+    for block in blocks:
+        if current is None:
+            current = block
+            continue
+        if should_merge_text_blocks(current, block):
+            current = TextBlock(
+                page=current.page,
+                bbox=union_bboxes([current.bbox, block.bbox]),
+                text=normalize_text(f"{current.text} {block.text}"),
+            )
+            continue
+        merged.append(current)
+        current = block
+
+    if current is not None:
+        merged.append(current)
+    return merged
+
+
+def should_merge_text_blocks(first: TextBlock, second: TextBlock) -> bool:
+    if first.page != second.page:
+        return False
+    if looks_like_heading(first.text) or looks_like_heading(second.text):
+        return False
+    first_words = len(first.text.split())
+    second_words = len(second.text.split())
+    first_is_incomplete = not re.search(r"[.!?:;)]$", first.text)
+    first_is_short_incomplete = first_words < 25 and first_is_incomplete
+    second_starts_continuation = starts_with_continuation_word(second.text)
+    if first_is_incomplete and second_starts_continuation:
+        if plausible_column_continuation(first.bbox, second.bbox):
+            return True
+    if first_words >= 85 or second_words >= 85:
+        if not first_is_short_incomplete:
+            return False
+    gap = vertical_gap(first.bbox, second.bbox)
+    if gap > 32:
+        return False
+    x0_delta = abs(first.bbox[0] - second.bbox[0])
+    overlap = horizontal_overlap_ratio(first.bbox, second.bbox)
+    if x0_delta > 44 and overlap < 0.55:
+        return False
+    if re.search(r"[.!?]$", first.text) and first_words >= 35:
+        return False
+    return True
+
+
+def starts_with_continuation_word(text: str) -> bool:
+    stripped = text.lstrip("\"'([{")
+    return bool(stripped) and stripped[0].islower()
+
+
+def plausible_column_continuation(first: BBox, second: BBox) -> bool:
+    x0_delta = abs(first[0] - second[0])
+    overlap = horizontal_overlap_ratio(first, second)
+    if x0_delta <= 56 or overlap >= 0.50:
+        return vertical_gap(first, second) <= 72
+    second_is_to_the_right = second[0] > first[2] and second[1] <= first[1] + 36
+    second_is_to_the_left = first[0] > second[2] and first[1] >= second[1] - 36
+    return second_is_to_the_right or second_is_to_the_left
 
 
 def looks_like_heading(text: str) -> bool:
@@ -721,6 +792,11 @@ def vertical_gap(first: BBox, second: BBox) -> float:
     return 0.0
 
 
+def horizontal_overlap_ratio(first: BBox, second: BBox) -> float:
+    overlap = max(0.0, min(first[2], second[2]) - max(first[0], second[0]))
+    return overlap / max(1.0, min(first[2] - first[0], second[2] - second[0]))
+
+
 def union_bboxes(boxes: list[BBox]) -> BBox:
     return (
         min(box[0] for box in boxes),
@@ -728,6 +804,21 @@ def union_bboxes(boxes: list[BBox]) -> BBox:
         max(box[2] for box in boxes),
         max(box[3] for box in boxes),
     )
+
+
+def trim_bbox_around_blockers(bbox: BBox, blockers: list[BBox], anchor_bbox: BBox) -> BBox:
+    x0, top, x1, bottom = bbox
+    anchor_top, anchor_bottom = anchor_bbox[1], anchor_bbox[3]
+    for blocker in blockers:
+        if horizontal_overlap_ratio(bbox, blocker) < 0.20:
+            continue
+        if blocker[3] <= anchor_top and blocker[3] > top:
+            top = max(top, blocker[3] + 8)
+        elif blocker[1] >= anchor_bottom and blocker[1] < bottom:
+            bottom = min(bottom, blocker[1] - 8)
+    if bottom - top < 72:
+        return bbox
+    return (x0, top, x1, bottom)
 
 
 def substantial_table_bbox(bbox: BBox, page: pdfplumber.page.Page) -> bool:
@@ -738,7 +829,11 @@ def substantial_table_bbox(bbox: BBox, page: pdfplumber.page.Page) -> bool:
     return width >= page.width * 0.38 and height >= 70 and area_ratio >= 0.035
 
 
-def heuristic_table_bbox(caption_bbox: BBox, page: pdfplumber.page.Page) -> BBox | None:
+def heuristic_table_bbox(
+    caption_bbox: BBox,
+    page: pdfplumber.page.Page,
+    words: list[dict[str, Any]] | None = None,
+) -> BBox | None:
     x0 = max(0.0, page.width * 0.05)
     x1 = min(float(page.width), page.width * 0.95)
     caption_top = caption_bbox[1]
@@ -747,13 +842,84 @@ def heuristic_table_bbox(caption_bbox: BBox, page: pdfplumber.page.Page) -> BBox
     # crop above it instead of off the page.
     if caption_bottom < page.height * 0.72:
         top = max(0.0, caption_top - 8)
-        bottom = min(float(page.height), caption_bottom + min(260.0, page.height * 0.34))
+        bottom = infer_content_bottom_after_caption(caption_bbox, page, words)
     else:
         top = max(0.0, caption_top - min(260.0, page.height * 0.34))
         bottom = min(float(page.height), caption_bottom + 8)
     if bottom - top < 36:
         return None
     return (x0, top, x1, bottom)
+
+
+def infer_content_bottom_after_caption(
+    caption_bbox: BBox,
+    page: pdfplumber.page.Page,
+    words: list[dict[str, Any]] | None,
+) -> float:
+    caption_bottom = caption_bbox[3]
+    default_bottom = min(float(page.height), caption_bottom + min(230.0, page.height * 0.30))
+    if not words:
+        return default_bottom
+
+    lines = [
+        line
+        for line in group_words_into_lines(words)
+        if line["bbox"][1] > caption_bottom + 6
+    ]
+    seen_content = False
+    last_content_bottom = 0.0
+
+    for line in lines:
+        line_top = float(line["bbox"][1])
+        line_bottom = float(line["bbox"][3])
+        if line_top > default_bottom:
+            break
+        text = line["text"]
+        if starts_new_caption(text) and line_top > caption_bottom + 22:
+            return max(caption_bottom + 36, line_top - 8)
+        if line_is_tableish(text):
+            seen_content = True
+            last_content_bottom = line_bottom
+            continue
+        if seen_content and line_is_body_boundary(text):
+            return max(caption_bottom + 36, line_top - 8)
+        if seen_content:
+            last_content_bottom = line_bottom
+
+    if last_content_bottom:
+        return min(default_bottom, last_content_bottom + 10)
+    return default_bottom
+
+
+def starts_new_caption(text: str) -> bool:
+    return bool(re.match(r"^(Figure|Table)\s+\d+[\.:]", normalize_text(text), re.IGNORECASE))
+
+
+def line_is_tableish(text: str) -> bool:
+    cleaned = normalize_text(text)
+    numeric_tokens = len(re.findall(r"\b\d+(?:\.\d+)?%?\b", cleaned))
+    token_count = len(cleaned.split())
+    has_table_terms = bool(
+        re.search(
+            r"\b(Model|Acc|F1|Cost|Latency|Version|Server|Tool|Method|Dataset|Benchmark|Score)\b",
+            cleaned,
+            re.IGNORECASE,
+        )
+    )
+    has_url = "http://" in cleaned or "https://" in cleaned or "github.com" in cleaned
+    return numeric_tokens >= 2 or has_table_terms or has_url or token_count <= 6
+
+
+def line_is_body_boundary(text: str) -> bool:
+    cleaned = normalize_text(text)
+    token_count = len(cleaned.split())
+    if looks_like_heading(cleaned):
+        return True
+    if line_is_tableish(cleaned):
+        return False
+    starts_like_prose = bool(re.match(r"^(The|This|These|We|In|For|As|Our|To|It)\b", cleaned))
+    sentence_like = bool(re.search(r"[.!?]$", cleaned))
+    return token_count >= 8 and (starts_like_prose or sentence_like)
 
 
 def heuristic_figure_bbox(caption_bbox: BBox, page: pdfplumber.page.Page) -> BBox | None:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import fitz
 
-from pdf_card_mcp.converter import convert_pdf_to_card_html
+from pdf_card_mcp.converter import TextBlock, convert_pdf_to_card_html, merge_text_blocks
 
 
 def make_table_pdf(path: Path) -> None:
@@ -59,6 +59,7 @@ def make_figure_pdf(path: Path) -> None:
     page = document.new_page(width=612, height=792)
     page.insert_text((72, 72), "Sample Figure Paper", fontsize=18)
     page.insert_text((72, 95), "arXiv:2606.02470v1 [cs.AI] 1 Jun 2026", fontsize=9)
+    page.insert_text((72, 115), "*Equal contribution Project lead Example University", fontsize=9)
     page.draw_rect((130, 150, 482, 330), color=(0.5, 0.2, 0.35), fill=(0.95, 0.88, 0.9))
     page.draw_line((160, 295), (450, 185), color=(0.2, 0.4, 0.35), width=2)
     page.insert_text((160, 210), "Vector diagram", fontsize=20, color=(0.2, 0.2, 0.2))
@@ -115,6 +116,7 @@ def test_converter_embeds_captioned_vector_figures_as_images(tmp_path: Path) -> 
     assert "Vector diagram" not in paragraph_texts
     assert "1" not in paragraph_texts
     assert not any(text.startswith("arXiv:") for text in paragraph_texts)
+    assert not any(text.startswith("*Equal contribution") for text in paragraph_texts)
 
 
 def test_converter_reports_missing_pdf(tmp_path: Path) -> None:
@@ -125,3 +127,31 @@ def test_converter_reports_missing_pdf(tmp_path: Path) -> None:
         assert str(missing) in str(error)
     else:
         raise AssertionError("Expected FileNotFoundError")
+
+
+def test_merge_text_blocks_repairs_cross_column_continuations() -> None:
+    blocks = [
+        TextBlock(
+            page=1,
+            bbox=(55.0, 566.0, 289.0, 588.0),
+            text="The Model Context Protocol connects large language",
+        ),
+        TextBlock(
+            page=1,
+            bbox=(307.0, 207.0, 543.0, 349.0),
+            text="models with external tools and data sources.",
+        ),
+        TextBlock(
+            page=1,
+            bbox=(307.0, 357.0, 543.0, 522.0),
+            text="2. Related Work",
+        ),
+    ]
+
+    merged = merge_text_blocks(blocks)
+
+    assert len(merged) == 2
+    assert merged[0].text == (
+        "The Model Context Protocol connects large language models with external tools and data sources."
+    )
+    assert merged[1].text == "2. Related Work"

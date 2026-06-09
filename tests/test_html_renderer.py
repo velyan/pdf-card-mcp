@@ -54,3 +54,6 @@ def test_renderer_outputs_standalone_data_uri() -> None:
     assert "warm paper" not in html
     assert "Search the document" in html
     assert ">Text<" not in html
+    assert 'id="fontSize"' in html
+    assert "--reader-font-size" in html
+    assert "pdf-card-reader-font-size" in html

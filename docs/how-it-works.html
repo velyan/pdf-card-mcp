@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Card MCP - How It Works</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f5f2eb;
+  --paper: #fffdf8;
+  --ink: #292621;
+  --muted: #746f67;
+  --line: #d9d1c7;
+  --sage: #6f836e;
+  --sage-soft: #e7eee3;
+  --plum: #766374;
+  --plum-soft: #eee8ec;
+  --clay: #a98677;
+  --clay-soft: #f0e4de;
+  --gold: #a9834d;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #fffdf8 0%, var(--bg) 100%);
+  color: var(--ink);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.page {
+  width: min(1180px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: 42px 0 64px;
+}
+.hero {
+  display: grid;
+  gap: 14px;
+  padding: 0 0 28px;
+  border-bottom: 1px solid var(--line);
+}
+.kicker {
+  color: var(--sage);
+  font-size: 13px;
+  font-weight: 760;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+h1 {
+  max-width: 880px;
+  margin: 0;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: clamp(38px, 6vw, 70px);
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+.hero p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.5;
+}
+.flow {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin: 28px 0;
+}
+.step {
+  min-height: 210px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, .92);
+  box-shadow: 0 12px 28px rgba(59, 51, 43, .07);
+}
+.num {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--sage-soft);
+  color: #405840;
+  font-weight: 760;
+}
+.step h2 {
+  margin: 0;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 22px;
+  line-height: 1.1;
+}
+.step p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.diagram {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 24px;
+}
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.panel h2 {
+  margin: 0;
+  padding: 18px 18px 0;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 30px;
+}
+.panel p {
+  margin: 8px 18px 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.paper-view {
+  margin: 18px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+.line { height: 10px; border-radius: 99px; background: #ddd6cc; }
+.line.short { width: 58%; }
+.line.mid { width: 78%; }
+.asset {
+  min-height: 105px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--sage);
+  border-radius: 8px;
+  background: var(--sage-soft);
+  color: #405840;
+  font-weight: 760;
+}
+.asset.overwide {
+  border-color: var(--clay);
+  background: var(--clay-soft);
+  color: #6d4d43;
+}
+.cards-demo {
+  margin: 18px;
+  display: grid;
+  gap: 10px;
+}
+.reader-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.reader-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 20px;
+}
+.tag {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--plum-soft);
+  color: #675463;
+  font-size: 12px;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.matrix {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+}
+.note {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, .9);
+}
+.note h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.note p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+@media (max-width: 960px) {
+  .flow { grid-template-columns: repeat(2, 1fr); }
+  .diagram, .matrix { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .flow { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <section class="hero">
+    <div class="kicker">PDF Card MCP</div>
+    <h1>How a dense PDF becomes a readable card reader</h1>
+    <p>The tool keeps the PDF local, renders visual material as images, extracts body text into cards, and then removes text that already belongs inside a table or figure crop.</p>
+  </section>
+
+  <section class="flow" aria-label="Conversion pipeline">
+    <article class="step"><div class="num">1</div><h2>Open PDF</h2><p>PyMuPDF and pdfplumber read the same pages so text, images, tables, and coordinates can be compared.</p></article>
+    <article class="step"><div class="num">2</div><h2>Render Pages</h2><p>Each source page becomes an embedded PNG for the source-page modal.</p></article>
+    <article class="step"><div class="num">3</div><h2>Find Assets</h2><p>Captions, table boxes, embedded images, and vector regions become table or figure crops.</p></article>
+    <article class="step"><div class="num">4</div><h2>Suppress Overlap</h2><p>Text blocks inside asset regions are removed from body cards so diagram labels do not duplicate.</p></article>
+    <article class="step"><div class="num">5</div><h2>Merge Text</h2><p>Nearby body blocks are joined before splitting into digestible cards.</p></article>
+    <article class="step"><div class="num">6</div><h2>Write HTML</h2><p>The reader is one standalone file with embedded images, search, navigation, and font-size controls.</p></article>
+  </section>
+
+  <section class="diagram">
+    <article class="panel">
+      <h2>Where quality goes wrong</h2>
+      <p>PDFs do not expose clean article structure. A visual chart may be stored as vector lines plus many tiny text blocks, while a table may not expose a reliable table box.</p>
+      <div class="paper-view">
+        <div class="line mid"></div>
+        <div class="asset overwide">Fallback crop can grab nearby prose</div>
+        <div class="line"></div>
+        <div class="line short"></div>
+      </div>
+    </article>
+    <article class="panel">
+      <h2>What the reader tries to do</h2>
+      <p>Keep tables and figures visible as images, but use geometry to avoid duplicating their internal labels as separate cards.</p>
+      <div class="cards-demo">
+        <div class="reader-card"><span class="tag">Figure</span><strong>Figure card</strong><p>One crop with caption and source-page link.</p></div>
+        <div class="reader-card"><strong>Body card</strong><p>Only prose outside the figure/table region.</p></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="matrix">
+    <article class="note"><h3>Best case</h3><p>The PDF has a text layer, good captions, and detectable table boxes. Crops are tight and cards read cleanly.</p></article>
+    <article class="note"><h3>Hard case</h3><p>The PDF has vector diagrams, multi-column flow, or table text without borders. The converter has to infer boundaries.</p></article>
+    <article class="note"><h3>User control</h3><p>The generated reader includes a font-size slider, source-page modal, and standalone embedded assets.</p></article>
+  </section>
+</main>
+</body>
+</html>

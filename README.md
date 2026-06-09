@@ -6,7 +6,8 @@ tables and figures as images, and writes a standalone HTML file that can be move
 devices without losing assets.
 
 The default reader is designed for comfortable reading: large type, small cards, search,
-section navigation, next/previous controls, keyboard navigation, and source-page previews.
+section navigation, next/previous controls, keyboard navigation, a font-size slider, and
+source-page previews.
 
 ## Status
 
@@ -82,6 +83,12 @@ dependencies from `pyproject.toml` instead of relying on a user-managed Python s
 
 PDF processing is local. The tool does not upload document contents or call external APIs.
 Optional OCR runs locally when the user has installed OCR dependencies.
+
+## How It Works
+
+See [`docs/how-it-works.html`](docs/how-it-works.html) for a self-contained visual explainer
+of the conversion pipeline, including page rendering, table/figure crops, overlap suppression,
+text-card merging, and standalone HTML output.
 
 ## How Tables Are Handled
 

@@ -34,6 +34,7 @@ def render_html(manifest: ConversionManifest) -> str:
   --clay-soft: #f0e4de;
   --gold: #a9834d;
   --shadow: 0 12px 30px rgba(59, 51, 43, 0.09);
+  --reader-font-size: 22px;
 }}
 * {{ box-sizing: border-box; }}
 html {{ scroll-behavior: smooth; }}
@@ -103,6 +104,31 @@ button:hover, button:focus-visible, input:focus-visible {{
   border-radius: 8px;
   background: var(--paper);
   color: var(--ink);
+}}
+.font-control {{
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid rgba(217, 209, 199, 0.78);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.62);
+}}
+.font-row {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}}
+.font-row output {{
+  color: #475f47;
+  font-variant-numeric: tabular-nums;
+}}
+.font-control input[type="range"] {{
+  width: 100%;
+  accent-color: var(--accent);
 }}
 .meter {{
   height: 8px;
@@ -240,9 +266,10 @@ button:hover, button:focus-visible, input:focus-visible {{
 .text {{
   margin: 0;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
-  font-size: clamp(20px, 1.7vw, 27px);
+  font-size: var(--reader-font-size);
   line-height: 1.52;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }}
 .caption {{
   margin: 0 0 12px;
@@ -373,6 +400,13 @@ mark {{
       <button id="nextBtn" type="button">Next</button>
     </div>
     <input id="search" class="search" type="search" placeholder="Search the document" aria-label="Search the document">
+    <div class="font-control">
+      <div class="font-row">
+        <label for="fontSize">Font size</label>
+        <output id="fontSizeValue" for="fontSize">22px</output>
+      </div>
+      <input id="fontSize" type="range" min="18" max="32" step="1" value="22" aria-label="Font size">
+    </div>
     <div class="meter" aria-hidden="true"><span id="meter"></span></div>
     <div id="counter" class="counter">Card 0 of 0</div>
     <nav id="sections" class="sections" aria-label="Sections"></nav>
@@ -405,6 +439,8 @@ let activeIndex = 0;
 const cardsEl = document.getElementById("cards");
 const emptyEl = document.getElementById("empty");
 const searchEl = document.getElementById("search");
+const fontSizeEl = document.getElementById("fontSize");
+const fontSizeValueEl = document.getElementById("fontSizeValue");
 const counterEl = document.getElementById("counter");
 const meterEl = document.getElementById("meter");
 const sectionsEl = document.getElementById("sections");
@@ -415,6 +451,22 @@ const modalTitleEl = document.getElementById("modalTitle");
 document.getElementById("totalCards").textContent = String(payload.card_count);
 document.getElementById("totalTables").textContent = String(payload.table_count);
 document.getElementById("totalFigures").textContent = String(payload.figure_count);
+
+function setFontSize(value) {{
+  const size = Math.max(18, Math.min(32, Number(value) || 22));
+  document.documentElement.style.setProperty("--reader-font-size", `${{size}}px`);
+  fontSizeEl.value = String(size);
+  fontSizeValueEl.textContent = `${{size}}px`;
+  try {{
+    localStorage.setItem("pdf-card-reader-font-size", String(size));
+  }} catch (_) {{}}
+}}
+
+try {{
+  setFontSize(localStorage.getItem("pdf-card-reader-font-size") || fontSizeEl.value);
+}} catch (_) {{
+  setFontSize(fontSizeEl.value);
+}}
 
 function uniqueSections() {{
   const seen = new Set();
@@ -575,6 +627,7 @@ modalEl.addEventListener("click", event => {{
   if (event.target === modalEl) closeSource();
 }});
 searchEl.addEventListener("input", applyFilter);
+fontSizeEl.addEventListener("input", event => setFontSize(event.target.value));
 document.addEventListener("keydown", event => {{
   if (event.key === "Escape" && modalEl.classList.contains("open")) closeSource();
   if (event.key === "ArrowRight" && !modalEl.classList.contains("open")) scrollToIndex(activeIndex + 1);
