@@ -20,20 +20,20 @@ def render_html(manifest: ConversionManifest) -> str:
 <style>
 :root {{
   color-scheme: light;
-  --bg: #f8f4f1;
-  --paper: #fffdf9;
-  --paper-soft: #fbf0f3;
-  --ink: #272423;
-  --muted: #746e6a;
-  --line: #ddd3ce;
-  --rose: #b75f78;
-  --rose-soft: #f7dfe7;
-  --sage: #708c76;
-  --sage-soft: #e8efe6;
-  --plum: #735269;
-  --plum-soft: #eee3eb;
-  --gold: #b4894a;
-  --shadow: 0 12px 30px rgba(61, 45, 39, 0.10);
+  --bg: #f5f2eb;
+  --paper: #fffdf8;
+  --paper-soft: #f7f2e9;
+  --ink: #282522;
+  --muted: #746f67;
+  --line: #d9d1c7;
+  --accent: #6f836e;
+  --accent-soft: #e7eee3;
+  --plum: #766374;
+  --plum-soft: #eee8ec;
+  --clay: #a98677;
+  --clay-soft: #f0e4de;
+  --gold: #a9834d;
+  --shadow: 0 12px 30px rgba(59, 51, 43, 0.09);
 }}
 * {{ box-sizing: border-box; }}
 html {{ scroll-behavior: smooth; }}
@@ -41,7 +41,7 @@ body {{
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(255, 253, 249, 0.72), rgba(248, 244, 241, 0.96)),
+    linear-gradient(180deg, rgba(255, 253, 248, 0.82), rgba(245, 242, 235, 0.96)),
     var(--bg);
   color: var(--ink);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -56,8 +56,8 @@ button {{
   cursor: pointer;
 }}
 button:hover, button:focus-visible, input:focus-visible {{
-  border-color: var(--rose);
-  outline: 3px solid rgba(183, 95, 120, 0.16);
+  border-color: var(--accent);
+  outline: 3px solid rgba(111, 131, 110, 0.18);
   outline-offset: 1px;
 }}
 .shell {{
@@ -114,7 +114,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   display: block;
   width: 0;
   height: 100%;
-  background: var(--rose);
+  background: var(--accent);
   transition: width 160ms ease;
 }}
 .counter {{
@@ -133,9 +133,9 @@ button:hover, button:focus-visible, input:focus-visible {{
   background: rgba(255, 253, 249, 0.78);
 }}
 .sections button.active {{
-  border-color: var(--rose);
-  background: var(--rose-soft);
-  color: #6d2d43;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: #415640;
 }}
 .content {{
   min-width: 0;
@@ -174,8 +174,8 @@ button:hover, button:focus-visible, input:focus-visible {{
   box-shadow: var(--shadow);
   overflow: hidden;
 }}
-.card.table {{ border-color: rgba(183, 95, 120, 0.58); }}
-.card.figure {{ border-color: rgba(112, 140, 118, 0.62); }}
+.card.table {{ border-color: rgba(118, 99, 116, 0.45); }}
+.card.figure {{ border-color: rgba(111, 131, 110, 0.54); }}
 .card.heading {{
   box-shadow: none;
   background: transparent;
@@ -202,8 +202,8 @@ button:hover, button:focus-visible, input:focus-visible {{
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: var(--sage-soft);
-  color: #4f6654;
+  background: var(--accent-soft);
+  color: #475f47;
   font-size: 13px;
 }}
 .card-body {{

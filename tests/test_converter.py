@@ -58,11 +58,13 @@ def make_figure_pdf(path: Path) -> None:
     document = fitz.open()
     page = document.new_page(width=612, height=792)
     page.insert_text((72, 72), "Sample Figure Paper", fontsize=18)
+    page.insert_text((72, 95), "arXiv:2606.02470v1 [cs.AI] 1 Jun 2026", fontsize=9)
     page.draw_rect((130, 150, 482, 330), color=(0.5, 0.2, 0.35), fill=(0.95, 0.88, 0.9))
     page.draw_line((160, 295), (450, 185), color=(0.2, 0.4, 0.35), width=2)
     page.insert_text((160, 210), "Vector diagram", fontsize=20, color=(0.2, 0.2, 0.2))
     page.insert_text((72, 360), "Figure 1. A vector diagram that is not an embedded bitmap.", fontsize=11)
     page.insert_text((72, 400), "The captioned graphic should become an image card.", fontsize=12)
+    page.insert_text((306, 760), "1", fontsize=9)
     document.save(path)
     document.close()
 
@@ -103,6 +105,16 @@ def test_converter_embeds_captioned_vector_figures_as_images(tmp_path: Path) -> 
     assert "Figure 1. A vector diagram" in html
     assert '"kind": "figure"' in html
     assert "data:image/png;base64" in html
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    paragraph_texts = [
+        card["text"]
+        for card in manifest["cards"]
+        if card["kind"] == "paragraph"
+    ]
+    assert "Vector diagram" not in paragraph_texts
+    assert "1" not in paragraph_texts
+    assert not any(text.startswith("arXiv:") for text in paragraph_texts)
 
 
 def test_converter_reports_missing_pdf(tmp_path: Path) -> None:

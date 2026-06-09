@@ -107,8 +107,6 @@ class PdfCardConverter:
             page_count = len(document)
             processed_pages = min(page_count, self.options.max_pages or page_count)
             title = self._title(document, plumber_pdf)
-            page_table_regions: dict[int, list[BBox]] = {}
-
             for index in range(processed_pages):
                 page_number = index + 1
                 fitz_page = document[index]
@@ -117,10 +115,20 @@ class PdfCardConverter:
                 self.assets.append(source_asset)
 
                 table_regions = self._extract_tables(fitz_page, plumber_page, page_number)
-                page_table_regions[page_number] = table_regions
-                self._extract_figures(fitz_page, plumber_page, page_number, table_regions)
+                figure_regions = self._extract_figures(
+                    fitz_page,
+                    plumber_page,
+                    page_number,
+                    table_regions,
+                )
+                suppressed_regions = [*table_regions, *figure_regions]
 
-                text_blocks = self._extract_text_blocks(fitz_page, page_number, table_regions)
+                text_blocks = self._extract_text_blocks(
+                    fitz_page,
+                    page_number,
+                    suppressed_regions,
+                    title,
+                )
                 if not text_blocks and self.options.ocr:
                     text_blocks = self._ocr_page(source_asset, page_number)
                 for block in text_blocks:
@@ -277,7 +285,8 @@ class PdfCardConverter:
         plumber_page: pdfplumber.page.Page,
         page_number: int,
         table_regions: list[BBox],
-    ) -> None:
+    ) -> list[BBox]:
+        figure_regions: list[BBox] = []
         words = extract_words(plumber_page)
         figure_captions = find_caption_lines(words, "Figure")
         try:
@@ -315,6 +324,7 @@ class PdfCardConverter:
             if not valid_bbox(bbox, fitz_page.rect):
                 self.warnings.append(f"Page {page_number}: skipped invalid figure bbox {plumber_bbox}.")
                 continue
+            figure_regions.append(bbox)
             self._append_cropped_asset_card(
                 fitz_page=fitz_page,
                 page_number=page_number,
@@ -330,6 +340,7 @@ class PdfCardConverter:
             if not self._useful_image_bbox(bbox, fitz_page.rect, table_regions):
                 continue
             caption = caption_near_bbox(words, bbox, "Figure") or f"Figure on page {page_number}"
+            figure_regions.append(bbox)
             self._append_cropped_asset_card(
                 fitz_page=fitz_page,
                 page_number=page_number,
@@ -338,12 +349,14 @@ class PdfCardConverter:
                 caption=caption,
                 fallback_label=f"Figure {image_index} on page {page_number}",
             )
+        return figure_regions
 
     def _extract_text_blocks(
         self,
         fitz_page: fitz.Page,
         page_number: int,
-        table_regions: list[BBox],
+        suppressed_regions: list[BBox],
+        document_title: str,
     ) -> list[TextBlock]:
         text_blocks: list[TextBlock] = []
         raw = fitz_page.get_text("dict")
@@ -351,7 +364,7 @@ class PdfCardConverter:
             if block.get("type") != 0:
                 continue
             bbox = tuple(float(value) for value in block.get("bbox", (0, 0, 0, 0)))
-            if any(overlap_ratio(bbox, table_bbox) > 0.25 for table_bbox in table_regions):
+            if any(region_contains_text_block(bbox, region) for region in suppressed_regions):
                 continue
             lines: list[str] = []
             for line in block.get("lines", []):
@@ -359,7 +372,7 @@ class PdfCardConverter:
                 if line_text.strip():
                     lines.append(line_text.rstrip())
             text = normalize_block_lines(lines)
-            if text:
+            if text and not is_metadata_or_noise(text, page_number, document_title):
                 text_blocks.append(TextBlock(page=page_number, bbox=bbox, text=text))
         return text_blocks
 
@@ -531,6 +544,27 @@ def png_data_uri(data: bytes) -> str:
 def normalize_text(text: str) -> str:
     text = text.replace("\u00a0", " ")
     return re.sub(r"\s+", " ", text).strip()
+
+
+def normalized_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_text(text).lower())
+
+
+def is_metadata_or_noise(text: str, page_number: int, document_title: str) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return True
+    if re.fullmatch(r"\d{1,4}", cleaned):
+        return True
+    if page_number > 1 and normalized_key(cleaned) == normalized_key(document_title):
+        return True
+    if re.match(r"^arXiv:\d{4}\.\d+(?:v\d+)?\b", cleaned, re.IGNORECASE):
+        return True
+    if re.match(r"^Proceedings of the\b", cleaned, re.IGNORECASE) and "Copyright" in cleaned:
+        return True
+    if re.fullmatch(r"copyright\s+\d{4}.*", cleaned, re.IGNORECASE):
+        return True
+    return False
 
 
 def normalize_block_lines(lines: list[str]) -> str:
@@ -749,6 +783,20 @@ def valid_bbox(bbox: BBox, page_rect: fitz.Rect) -> bool:
         and bbox[2] > 0
         and bbox[3] > 0
     )
+
+
+def bbox_center(bbox: BBox) -> tuple[float, float]:
+    return ((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2)
+
+
+def point_in_bbox(point: tuple[float, float], bbox: BBox) -> bool:
+    return bbox[0] <= point[0] <= bbox[2] and bbox[1] <= point[1] <= bbox[3]
+
+
+def region_contains_text_block(text_bbox: BBox, region_bbox: BBox) -> bool:
+    if point_in_bbox(bbox_center(text_bbox), region_bbox):
+        return True
+    return overlap_ratio(text_bbox, region_bbox) > 0.22
 
 
 def overlap_ratio(first: BBox, second: BBox) -> float:
