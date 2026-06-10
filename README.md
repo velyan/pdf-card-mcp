@@ -1,5 +1,7 @@
 # PDF Card MCP
 
+<!-- mcp-name: io.github.velyan/pdf-card-mcp -->
+
 PDF Card MCP is a local-first MCP tool that converts dense PDFs into soft, minimal,
 card-based HTML readers. It preserves source text, renders source pages, crops detected
 tables, figures, and display formulas as images, and writes a standalone HTML file that
@@ -12,8 +14,8 @@ source-page previews.
 ## Status
 
 This is an early open-source implementation. It is useful for text-layer PDFs now, with
-best-effort table detection via `pdfplumber` and raster crops via PyMuPDF. Scanned PDFs
-need optional OCR support.
+best-effort table detection via `pdfplumber`, permissive raster rendering via `pypdfium2`,
+and optional richer local table detection via `gmft`. Scanned PDFs need optional OCR support.
 
 ## Install For Development
 
@@ -29,6 +31,13 @@ python -m pip install -e ".[dev]"
 ```bash
 uv sync
 uv run pdf-card-mcp path/to/document.pdf --output out/document.html
+```
+
+Install the optional local ML table detector when you want stronger table crops:
+
+```bash
+uv sync --extra table-ml
+uv run --extra table-ml pdf-card-mcp path/to/document.pdf --table-engine gmft
 ```
 
 ## CLI Usage
@@ -60,6 +69,19 @@ Inputs:
 - `ocr`: optional OCR fallback if `pytesseract` is installed.
 - `max_pages`: optional processing limit.
 - `theme`: defaults to `soft`.
+- `table_engine`: `auto`, `pdfplumber`, or `gmft`; `auto` uses `gmft` when installed.
+- `text_engine`: `char_geometry` or `pdfplumber_words`; defaults to `char_geometry` so
+  missing spaces are repaired from PDF character positions instead of trusting fused words.
+- `postprocess_engine`: `none` or `sampling`; defaults to `none`. When set to `sampling`,
+  the MCP server asks the host LLM for boundary-only card polish operations, validates exact
+  source-text preservation, and rewrites the generated reader. If the MCP client does not
+  support sampling, deterministic output is returned with a warning.
+- `model_cache_dir`: optional cache directory for local ML table model weights.
+- `offline`: use only already-cached optional ML models.
+
+Sampling post-processing is intentionally narrow. The host LLM may suggest merges, heading
+extraction, or front-matter/footnote classification, but Python validation rejects any operation
+that rewrites, deletes, invents, or reorders source text.
 
 Run the server locally:
 
@@ -72,11 +94,15 @@ python -m pdf_card_mcp.server
 This repo is arranged so the root can be packed directly:
 
 ```bash
-mcpb validate .
-mcpb pack . dist/pdf-card-mcp-0.1.0.mcpb
+python scripts/build_mcpb.py --variant all
 ```
 
-The MCPB manifest uses `server.type = "uv"`, so hosts that support UV runtime can install
+The slim bundle writes `dist/pdf-card-mcp-lite.mcpb`. The full-quality UV bundle writes
+`dist/pdf-card-mcp.mcpb` and installs the `table-ml` extra. Neither bundle vendors ML model
+weights; `gmft` downloads and caches them locally on first use unless `offline=true` is set
+with a prewarmed cache.
+
+The MCPB manifests use `server.type = "uv"`, so hosts that support UV runtime can install
 dependencies from `pyproject.toml` instead of relying on a user-managed Python setup.
 
 ## Privacy
@@ -93,7 +119,8 @@ text-card merging, and standalone HTML output.
 ## How Tables Are Handled
 
 All detected tables are rendered as image cards. The converter uses `pdfplumber` to find table
-regions, then uses PyMuPDF to rasterize the source region into PNG. Captions are preserved as
+regions and can optionally use `gmft`/Table Transformer for stronger local detection. It then
+uses `pypdfium2` to rasterize only the source table region into PNG. Captions are preserved as
 reader text and alt text, but the table itself remains an image so layout and numeric alignment
 survive conversion.
 

@@ -18,6 +18,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-pages", type=int, help="Only process the first N pages.")
     parser.add_argument("--ocr", action="store_true", help="Use optional OCR fallback for scanned pages.")
     parser.add_argument("--theme", default="soft", help="Reader theme name. Default: soft.")
+    parser.add_argument(
+        "--table-engine",
+        choices=["auto", "pdfplumber", "gmft"],
+        default="auto",
+        help="Table detector to use. Default: auto.",
+    )
+    parser.add_argument(
+        "--text-engine",
+        choices=["char_geometry", "pdfplumber_words"],
+        default="char_geometry",
+        help="Text extractor to use for prose cards. Default: char_geometry.",
+    )
+    parser.add_argument("--model-cache-dir", help="Cache directory for optional local ML table models.")
+    parser.add_argument("--offline", action="store_true", help="Use only already-cached optional ML models.")
     parser.add_argument("--json", action="store_true", help="Print only structured JSON output.")
     return parser
 
@@ -31,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
         max_pages=args.max_pages,
         ocr=args.ocr,
         theme=args.theme,
+        table_engine=args.table_engine,
+        text_engine=args.text_engine,
+        model_cache_dir=Path(args.model_cache_dir) if args.model_cache_dir else None,
+        offline=args.offline,
     )
     payload = result.to_dict()
     if args.json:

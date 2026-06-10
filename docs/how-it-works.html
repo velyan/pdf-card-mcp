@@ -219,7 +219,7 @@ h1 {
   </section>
 
   <section class="flow" aria-label="Conversion pipeline">
-    <article class="step"><div class="num">1</div><h2>Open PDF</h2><p>PyMuPDF and pdfplumber read the same pages so text, images, tables, and coordinates can be compared.</p></article>
+    <article class="step"><div class="num">1</div><h2>Open PDF</h2><p>pypdfium2 renders pages while pdfplumber reads text, captions, tables, and coordinates for comparison.</p></article>
     <article class="step"><div class="num">2</div><h2>Render Pages</h2><p>Each source page becomes an embedded PNG for the source-page modal.</p></article>
     <article class="step"><div class="num">3</div><h2>Find Assets</h2><p>Captions, table boxes, embedded images, vector regions, and display equations become image crops.</p></article>
     <article class="step"><div class="num">4</div><h2>Suppress Overlap</h2><p>Text blocks inside asset regions are removed from body cards so diagram labels do not duplicate.</p></article>

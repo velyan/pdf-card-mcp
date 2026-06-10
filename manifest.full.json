@@ -3,8 +3,8 @@
   "name": "pdf-card-mcp",
   "display_name": "PDF Card Reader",
   "version": "0.1.0",
-  "description": "Convert local PDFs into polished standalone card-based HTML readers with embedded table and figure images.",
-  "long_description": "PDF Card Reader is a local-first MCP tool for turning dense PDFs into calm, minimal HTML readers. It keeps text local, renders source pages, crops detected tables and figures as images, and writes a standalone HTML file that can be moved across devices. Optional sampling post-processing asks the host LLM for validated boundary-only card polish operations without rewriting source text.",
+  "description": "Convert local PDFs into standalone, readable card-based HTML pages with embedded table and figure images.",
+  "long_description": "PDF Card Reader is a local-first MCP tool for turning dense PDFs into calm, minimal HTML readers. This full variant installs the optional local ML table detector for stronger table crops while keeping all document processing on-device.",
   "author": {
     "name": "PDF Card MCP Contributors"
   },
@@ -23,6 +23,8 @@
         "--directory",
         "${__dirname}",
         "run",
+        "--extra",
+        "table-ml",
         "python",
         "-m",
         "pdf_card_mcp.server"
@@ -32,7 +34,7 @@
   "tools": [
     {
       "name": "convert_pdf_to_card_html",
-      "description": "Convert a local PDF into a standalone card-based HTML reader with embedded table and figure images. Set postprocess_engine='sampling' to let the host LLM propose validated card boundary polish."
+      "description": "Convert a local PDF into a standalone card-based HTML reader with embedded table and figure images."
     }
   ],
   "tools_generated": false,

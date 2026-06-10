@@ -198,17 +198,26 @@ button:hover, button:focus-visible, input:focus-visible {{
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 253, 249, 0.94);
-  box-shadow: 0 10px 24px rgba(59, 51, 43, 0.07);
+  box-shadow: 0 8px 22px rgba(59, 51, 43, 0.055);
   overflow: hidden;
   transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }}
 .card:hover {{
   border-color: rgba(111, 131, 110, 0.44);
-  box-shadow: 0 14px 34px rgba(59, 51, 43, 0.10);
+  box-shadow: 0 12px 28px rgba(59, 51, 43, 0.08);
 }}
 .card.table {{ border-color: rgba(118, 99, 116, 0.45); }}
 .card.figure {{ border-color: rgba(111, 131, 110, 0.54); }}
 .card.formula {{ border-color: rgba(169, 131, 77, 0.42); }}
+.card.footnote {{
+  border-color: rgba(111, 131, 110, 0.28);
+  background: rgba(247, 242, 233, 0.82);
+}}
+.card.metadata {{
+  border-color: rgba(217, 209, 199, 0.72);
+  background: rgba(247, 242, 233, 0.62);
+  box-shadow: none;
+}}
 .card.heading {{
   box-shadow: none;
   background: transparent;
@@ -220,7 +229,12 @@ button:hover, button:focus-visible, input:focus-visible {{
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 20px 22px 0;
+  padding: 14px 18px 0;
+}}
+.card-actions {{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }}
 .card-type {{
   display: inline-flex;
@@ -252,7 +266,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   padding-bottom: 0;
 }}
 .card-body {{
-  padding: 16px 22px 10px;
+  padding: 12px 22px 22px;
 }}
 .card.heading .card-body {{
   padding: 18px 0 2px;
@@ -270,7 +284,20 @@ button:hover, button:focus-visible, input:focus-visible {{
   font-size: var(--reader-font-size);
   line-height: 1.52;
   letter-spacing: 0;
-  overflow-wrap: anywhere;
+  max-width: 78ch;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
+}}
+.card.footnote .text {{
+  color: var(--muted);
+  font-size: calc(var(--reader-font-size) * 0.82);
+}}
+.card.metadata .text {{
+  max-width: 86ch;
+  color: var(--muted);
+  font-size: calc(var(--reader-font-size) * 0.78);
+  line-height: 1.42;
 }}
 .caption {{
   margin: 0 0 12px;
@@ -302,11 +329,6 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .card.formula .asset-wrap img {{
   margin: 0 auto;
-}}
-.card-footer {{
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 22px 18px;
 }}
 .source-link {{
   min-height: 34px;
@@ -585,16 +607,21 @@ function renderCard(card, index) {{
   const header = label
     ? `<div class="card-header">
         <div class="card-type">${{escapeHtml(label)}}</div>
-        <div class="page-chip">${{escapeHtml(badge)}}</div>
+        <div class="card-actions">
+          <div class="page-chip">${{escapeHtml(badge)}}</div>
+          ${{sourceButton}}
+        </div>
       </div>`
     : `<div class="card-header plain">
-        <div class="page-chip">${{escapeHtml(badge)}}</div>
+        <div class="card-actions">
+          <div class="page-chip">${{escapeHtml(badge)}}</div>
+          ${{sourceButton}}
+        </div>
       </div>`;
 
   article.innerHTML = `
     ${{header}}
-    <div class="card-body">${{body}}</div>
-    <div class="card-footer">${{sourceButton}}</div>`;
+    <div class="card-body">${{body}}</div>`;
 
   const button = article.querySelector("[data-source]");
   if (button) {{

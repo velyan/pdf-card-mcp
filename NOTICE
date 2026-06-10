@@ -1,0 +1,25 @@
+PDF Card MCP
+Copyright (c) PDF Card MCP Contributors
+
+This project is distributed under the MIT License.
+
+Third-party runtime components used by the default package include:
+
+- FastMCP and the MCP Python SDK for local MCP server transport.
+- pdfplumber and pdfminer.six for text, word, geometry, and table metadata extraction.
+- pypdfium2 and PDFium for PDF rendering, page screenshots, and clipped image crops.
+- Pillow for PNG encoding and image handling.
+
+pypdfium2 is available under Apache-2.0 or BSD-3-Clause terms. PDFium is available under
+BSD-style terms and includes third-party dependency notices that are shipped by pypdfium2
+wheel distributions. Redistributors should preserve those notices from the exact wheel
+artifacts they ship.
+
+Optional components:
+
+- pytesseract may be installed for local OCR fallback.
+- gmft may be installed through the `table-ml` extra for local ML table detection. gmft uses
+  Microsoft Table Transformer model weights downloaded into the user's local model cache unless
+  an offline cache is supplied.
+
+The default runtime intentionally does not depend on PyMuPDF/MuPDF.
