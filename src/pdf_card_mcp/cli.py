@@ -19,6 +19,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ocr", action="store_true", help="Use optional OCR fallback for scanned pages.")
     parser.add_argument("--theme", default="soft", help="Reader theme name. Default: soft.")
     parser.add_argument(
+        "--style-engine",
+        choices=["fixed", "pdf"],
+        default="pdf",
+        help="Reader style engine. Default: pdf.",
+    )
+    parser.add_argument(
         "--table-engine",
         choices=["auto", "pdfplumber", "gmft"],
         default="auto",
@@ -45,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
         max_pages=args.max_pages,
         ocr=args.ocr,
         theme=args.theme,
+        style_engine=args.style_engine,
         table_engine=args.table_engine,
         text_engine=args.text_engine,
         model_cache_dir=Path(args.model_cache_dir) if args.model_cache_dir else None,

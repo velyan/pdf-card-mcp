@@ -15,7 +15,8 @@ from PIL import Image
 
 from .html_renderer import render_html
 from .models import BBox, Card, ConversionManifest, ImageAsset
-from .pdf_backend import PageRect, PdfiumDocument, PdfiumPage
+from .pdf_backend import PageRect, PdfTocEntry, PdfiumDocument, PdfiumPage
+from .style import collect_font_summary, extract_style_hints, reader_style_from_hints, soft_reader_style
 
 
 @dataclass(slots=True)
@@ -27,6 +28,7 @@ class ConversionOptions:
     ocr: bool = False
     max_pages: int | None = None
     theme: str = "soft"
+    style_engine: str = "pdf"
     table_engine: str = "auto"
     text_engine: str = "char_geometry"
     model_cache_dir: Path | None = None
@@ -46,6 +48,7 @@ class ConversionResult:
     figure_count: int
     formula_count: int
     warnings: list[str] = field(default_factory=list)
+    style_engine: str = "pdf"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -57,6 +60,7 @@ class ConversionResult:
             "figure_count": self.figure_count,
             "formula_count": self.formula_count,
             "warnings": self.warnings,
+            "style_engine": self.style_engine,
         }
 
 
@@ -66,6 +70,7 @@ class TextBlock:
     bbox: BBox
     text: str
     kind: str = "text"
+    items: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -73,6 +78,8 @@ class TableCandidate:
     bbox: BBox
     source: str = "pdfplumber"
     confidence: float = 1.0
+    cell_count: int | None = None
+    non_empty_cells: int | None = None
 
 
 def convert_pdf_to_card_html(
@@ -83,6 +90,7 @@ def convert_pdf_to_card_html(
     ocr: bool = False,
     max_pages: int | None = None,
     theme: str = "soft",
+    style_engine: str = "pdf",
     table_engine: str = "auto",
     text_engine: str = "char_geometry",
     model_cache_dir: str | Path | None = None,
@@ -97,6 +105,7 @@ def convert_pdf_to_card_html(
         ocr=ocr,
         max_pages=max_pages,
         theme=theme,
+        style_engine=style_engine,
         table_engine=table_engine,
         text_engine=text_engine,
         model_cache_dir=Path(model_cache_dir).expanduser() if model_cache_dir else None,
@@ -113,6 +122,8 @@ class PdfCardConverter:
         self.cards: list[Card] = []
         self._card_number = 0
         self._asset_ids: set[str] = set()
+        self._ligature_repair_pages: set[int] = set()
+        self._toc_targets_by_title: dict[str, PdfTocEntry] = {}
 
     def convert(self) -> ConversionResult:
         pdf_path = self.options.pdf_path
@@ -126,6 +137,8 @@ class PdfCardConverter:
             raise ValueError("table_engine must be one of: auto, pdfplumber, gmft")
         if self.options.text_engine not in {"char_geometry", "pdfplumber_words"}:
             raise ValueError("text_engine must be one of: char_geometry, pdfplumber_words")
+        if self.options.style_engine not in {"fixed", "pdf"}:
+            raise ValueError("style_engine must be one of: fixed, pdf")
 
         output_path = self._default_output_path(pdf_path)
         manifest_path = output_path.with_suffix(".manifest.json")
@@ -135,6 +148,7 @@ class PdfCardConverter:
             page_count = len(document)
             processed_pages = min(page_count, self.options.max_pages or page_count)
             title = self._title(plumber_pdf)
+            self._toc_targets_by_title = toc_targets_by_title(document.toc_entries())
             gmft_tables = self._detect_gmft_tables(processed_pages)
             for index in range(processed_pages):
                 page_number = index + 1
@@ -142,6 +156,7 @@ class PdfCardConverter:
                 plumber_page = plumber_pdf.pages[index]
                 source_asset = self._render_source_page(pdf_page, page_number)
                 self.assets.append(source_asset)
+                page_card_start = len(self.cards)
 
                 table_regions = self._extract_tables(
                     pdf_page,
@@ -168,6 +183,11 @@ class PdfCardConverter:
                     text_blocks = self._ocr_page(source_asset, page_number)
                 for block in text_blocks:
                     self._append_text_cards(block, source_asset.id, pdf_page)
+                self._reorder_recent_page_cards(
+                    start_index=page_card_start,
+                    page_number=page_number,
+                    page_width=float(pdf_page.rect.width),
+                )
 
             self.cards = smooth_reader_cards(self.cards, self.options.max_words_per_card)
 
@@ -186,6 +206,17 @@ class PdfCardConverter:
                         "The PDF mentions tables, but no reliable table regions were detected."
                     )
 
+            if self.options.style_engine == "pdf":
+                style_hints = extract_style_hints(
+                    self.assets,
+                    self.cards,
+                    font_summary=collect_font_summary(plumber_pdf.pages[:processed_pages]),
+                )
+                reader_style = reader_style_from_hints(style_hints)
+            else:
+                style_hints = None
+                reader_style = soft_reader_style()
+
             manifest = ConversionManifest(
                 title=title,
                 source_pdf=pdf_path,
@@ -195,6 +226,9 @@ class PdfCardConverter:
                 assets=self.assets,
                 warnings=self.warnings,
                 theme=self.options.theme,
+                style_engine=self.options.style_engine,
+                style_hints=style_hints,
+                style=reader_style,
             )
 
         output_path.write_text(render_html(manifest), encoding="utf-8")
@@ -212,6 +246,7 @@ class PdfCardConverter:
             figure_count=manifest.figure_count,
             formula_count=manifest.formula_count,
             warnings=manifest.warnings,
+            style_engine=manifest.style_engine,
         )
 
     def _default_output_path(self, pdf_path: Path) -> Path:
@@ -222,14 +257,21 @@ class PdfCardConverter:
     def _title(self, plumber_pdf: pdfplumber.PDF) -> str:
         if self.options.title:
             return self.options.title.strip()
+        visual_title = infer_visual_title_from_first_page(plumber_pdf.pages[0]) if plumber_pdf.pages else None
         metadata_title = (plumber_pdf.metadata or {}).get("Title") or ""
-        if metadata_title.strip():
+        metadata_title = normalize_text(metadata_title)
+        if visual_title:
+            if not usable_metadata_title(metadata_title):
+                return visual_title
+            if len(normalized_key(visual_title)) > len(normalized_key(metadata_title)) * 1.18:
+                return visual_title
+        if usable_metadata_title(metadata_title):
             return normalize_text(metadata_title)
         if plumber_pdf.pages:
             text = plumber_pdf.pages[0].extract_text() or ""
             for line in text.splitlines():
                 cleaned = normalize_text(line)
-                if cleaned and len(cleaned) > 5:
+                if cleaned and len(cleaned) > 5 and not looks_like_title_noise(cleaned):
                     return cleaned[:180]
         return self.options.pdf_path.stem.replace("_", " ").replace("-", " ").title()
 
@@ -305,11 +347,11 @@ class PdfCardConverter:
             plumber_tables = []
 
         words = extract_words(plumber_page)
-        tables = [
-            TableCandidate(tuple(float(value) for value in table.bbox), source="pdfplumber")
-            for table in plumber_tables
-            if not caption_near_bbox(words, table.bbox, "Figure")
-        ]
+        tables: list[TableCandidate] = []
+        for table in plumber_tables:
+            if caption_near_bbox(words, table.bbox, "Figure"):
+                continue
+            tables.append(plumber_table_candidate(table))
         for bbox in gmft_bboxes:
             if caption_near_bbox(words, bbox, "Figure"):
                 continue
@@ -371,6 +413,8 @@ class PdfCardConverter:
                 continue
             if not substantial_table_bbox(table.bbox, plumber_page):
                 continue
+            if not useful_uncaptioned_table_candidate(table, plumber_page, words, page_number):
+                continue
             bbox = self._scale_plumber_bbox(table.bbox, plumber_page, pdf_page)
             if any(overlap_ratio(bbox, region) > 0.35 for region in table_regions):
                 continue
@@ -398,9 +442,10 @@ class PdfCardConverter:
         figure_regions: list[BBox] = []
         words = extract_words(plumber_page)
         figure_captions = find_caption_lines_for_page(plumber_page, "Figure")
+        raw_image_bboxes = list(pdf_page.visual_bboxes())
         image_bboxes = [
             bbox
-            for bbox in pdf_page.visual_bboxes()
+            for bbox in raw_image_bboxes
             if self._useful_image_bbox(bbox, pdf_page.rect, table_regions)
         ]
         caption_bboxes = [caption["bbox"] for caption in figure_captions]
@@ -420,6 +465,21 @@ class PdfCardConverter:
                     )
                     continue
                 candidate_boxes.append(heuristic_bbox)
+            if caption.get("embedded"):
+                caption_region = self._scale_plumber_bbox(caption["bbox"], plumber_page, pdf_page)
+                raw_near_indexes = nearby_bbox_indexes(
+                    caption_index - 1,
+                    caption_bboxes,
+                    raw_image_bboxes,
+                )
+                raw_candidate_boxes = [raw_image_bboxes[index] for index in raw_near_indexes]
+                column_boxes = [
+                    box
+                    for box in [*raw_candidate_boxes, *candidate_boxes]
+                    if embedded_caption_visual_candidate(box, caption_region, pdf_page.rect)
+                ]
+                if column_boxes:
+                    candidate_boxes = column_boxes
 
             bbox = union_bboxes(candidate_boxes)
             search_band = figure_search_band(caption_region, pdf_page.rect)
@@ -504,22 +564,125 @@ class PdfCardConverter:
                     float(plumber_page.width),
                 )
 
+        filtered_lines: list[dict[str, Any]] = []
         for line in lines:
             bbox = tuple(float(value) for value in line["bbox"])
-            if any(region_contains_text_block(bbox, region) for region in suppressed_regions):
+            filtered_line = dict(line)
+            filtered_line["bbox"] = bbox
+            suppressed = False
+            for region in suppressed_regions:
+                if region_contains_text_block(bbox, region):
+                    suppressed = True
+                    break
+                clipped_line = clip_line_left_of_suppressed_region(filtered_line, region)
+                if clipped_line is None:
+                    suppressed = True
+                    break
+                filtered_line = clipped_line
+                bbox = tuple(float(value) for value in filtered_line["bbox"])
+            if suppressed:
                 continue
-            text = normalize_text(str(line["text"]))
+            filtered_lines.append(filtered_line)
+
+        contents_block = extract_contents_block(
+            filtered_lines,
+            page_number,
+            self._toc_targets_by_title,
+            extract_page_links(plumber_page),
+        )
+        if contents_block is not None:
+            return [contents_block]
+
+        non_footnote_lines = [
+            line for line in filtered_lines if str(line.get("kind", "text")) != "footnote"
+        ]
+        algorithm_blocks = extract_algorithm_blocks(
+            non_footnote_lines,
+            page_number,
+            pdf_page.rect,
+        )
+        formula_blocks = extract_formula_blocks(
+            [
+                line
+                for line in non_footnote_lines
+                if containing_text_block_index(
+                    tuple(float(value) for value in line["bbox"]),
+                    algorithm_blocks,
+                )
+                is None
+            ],
+            page_number,
+            pdf_page.rect,
+        )
+        inserted_algorithm_indexes: set[int] = set()
+        inserted_formula_indexes: set[int] = set()
+
+        for line in filtered_lines:
+            bbox = tuple(float(value) for value in line["bbox"])
+            algorithm_index = containing_text_block_index(bbox, algorithm_blocks)
+            if algorithm_index is not None:
+                if algorithm_index not in inserted_algorithm_indexes:
+                    text_blocks.append(algorithm_blocks[algorithm_index])
+                    inserted_algorithm_indexes.add(algorithm_index)
+                continue
+            formula_index = containing_text_block_index(bbox, formula_blocks)
+            if formula_index is not None:
+                if formula_index not in inserted_formula_indexes:
+                    text_blocks.append(formula_blocks[formula_index])
+                    inserted_formula_indexes.add(formula_index)
+                continue
+            raw_text = str(line["text"])
+            text = normalize_text(raw_text)
+            text = repair_segment_text_with_pdfium(pdf_page, bbox, raw_text, text)
+            text = strip_wrapped_title_continuation(text, document_title, page_number)
+            text = strip_orphan_math_prefix(text)
             kind = str(line.get("kind", "text"))
-            if text and is_formula_text_line(bbox, pdf_page.rect, text):
+            repaired_ligatures = bool(line.get("repaired_ligatures")) or has_misdecoded_pdf_ligatures(
+                raw_text
+            )
+            if text and kind != "footnote" and is_formula_text_line(bbox, pdf_page.rect, text):
+                if repaired_ligatures:
+                    self._record_ligature_repair(page_number)
                 text_blocks.append(TextBlock(page=page_number, bbox=bbox, text=text, kind="formula"))
                 continue
             if (
                 text
-                and not is_metadata_or_noise(text, page_number, document_title)
+                and not is_metadata_or_noise(text, page_number, document_title, line)
                 and not looks_like_visual_label_noise(text)
             ):
+                if repaired_ligatures:
+                    self._record_ligature_repair(page_number)
                 text_blocks.append(TextBlock(page=page_number, bbox=bbox, text=text, kind=kind))
+        for index, block in enumerate(algorithm_blocks):
+            if index not in inserted_algorithm_indexes:
+                text_blocks.append(block)
+        for index, block in enumerate(formula_blocks):
+            if index not in inserted_formula_indexes:
+                text_blocks.append(block)
         return merge_text_blocks(text_blocks)
+
+    def _reorder_recent_page_cards(
+        self,
+        start_index: int,
+        page_number: int,
+        page_width: float,
+    ) -> None:
+        page_cards = self.cards[start_index:]
+        if len(page_cards) <= 1 or not any(card.page == page_number for card in page_cards):
+            return
+        self.cards[start_index:] = order_page_cards_for_reader(
+            page_cards,
+            page_number=page_number,
+            page_width=page_width,
+        )
+
+    def _record_ligature_repair(self, page_number: int) -> None:
+        if page_number in self._ligature_repair_pages:
+            return
+        self._ligature_repair_pages.add(page_number)
+        self.warnings.append(
+            f"Page {page_number}: repaired suspicious ligature glyph mappings in extracted text."
+        )
 
     def _ocr_page(self, source_asset: ImageAsset, page_number: int) -> list[TextBlock]:
         try:
@@ -545,6 +708,24 @@ class PdfCardConverter:
         source_image_id: str,
         pdf_page: PdfiumPage,
     ) -> None:
+        if block.kind == "footnote":
+            return
+
+        if block.kind == "contents":
+            self.cards.append(
+                Card(
+                    id=self._next_card_id(),
+                    kind="contents",
+                    page=block.page,
+                    section="Contents",
+                    text=block.text,
+                    source_image_id=source_image_id,
+                    bbox=block.bbox,
+                    items=block.items,
+                )
+            )
+            return
+
         if block.kind == "formula":
             self._append_cropped_asset_card(
                 pdf_page=pdf_page,
@@ -553,19 +734,14 @@ class PdfCardConverter:
                 bbox=block.bbox,
                 caption=block.text,
                 fallback_label=f"Formula on page {block.page}",
+                padding=2.0,
             )
             return
 
-        if block.kind == "footnote":
-            kind = "footnote"
-        else:
-            kind = "heading" if looks_like_heading(block.text) else "paragraph"
+        kind = "heading" if looks_like_heading(block.text) else "paragraph"
         if kind == "heading":
             text_parts = [block.text]
             section = block.text
-        elif kind == "footnote":
-            text_parts = split_text(block.text, self.options.max_words_per_card)
-            section = "Footnotes"
         else:
             text_parts = split_text(block.text, self.options.max_words_per_card)
             section = self._current_section()
@@ -590,9 +766,14 @@ class PdfCardConverter:
         bbox: BBox,
         caption: str,
         fallback_label: str,
+        padding: float = 5.0,
     ) -> None:
         try:
-            data, width, height = pdf_page.render_clip_png(bbox, self.options.crop_scale)
+            data, width, height = pdf_page.render_clip_png(
+                bbox,
+                self.options.crop_scale,
+                padding=padding,
+            )
         except Exception as error:
             self.warnings.append(f"Page {page_number}: failed to crop {kind}: {error}")
             return
@@ -686,6 +867,127 @@ def png_data_uri(data: bytes) -> str:
     return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
 
 
+def infer_visual_title_from_first_page(plumber_page: pdfplumber.page.Page) -> str | None:
+    segments = split_chars_into_reading_order_segments(
+        plumber_page.chars,
+        float(plumber_page.width),
+        float(plumber_page.height),
+    )
+    if not segments:
+        return None
+    body_font_size = dominant_body_font_size(segments, float(plumber_page.height))
+    title_lines: list[dict[str, Any]] = []
+    title_window_bottom = min(float(plumber_page.height) * 0.32, 220.0)
+    previous_bottom: float | None = None
+
+    for segment in segments:
+        text = normalize_text(str(segment.get("text", "")))
+        if not text:
+            continue
+        bbox = tuple(float(value) for value in segment["bbox"])
+        top = bbox[1]
+        if top > title_window_bottom:
+            if title_lines:
+                break
+            continue
+        if looks_like_title_stop_line(text):
+            if title_lines:
+                break
+            continue
+        if looks_like_title_noise(text) or looks_like_author_affiliation_line(text):
+            if title_lines and top - (previous_bottom or top) > 6:
+                break
+            continue
+
+        font_size = float(segment.get("font_size") or 0)
+        high_confidence = font_size >= max(13.0, body_font_size * 1.22)
+        uppercase_title = mostly_uppercase_words(text) and font_size >= max(12.0, body_font_size * 1.05)
+        if high_confidence or uppercase_title:
+            if title_lines and previous_bottom is not None and top - previous_bottom > max(12.0, font_size * 1.2):
+                break
+            title_lines.append({"text": text, "bbox": bbox, "font_size": font_size})
+            previous_bottom = bbox[3]
+        elif title_lines:
+            break
+
+    if not title_lines:
+        return None
+    title = join_wrapped_title_lines([str(line["text"]) for line in title_lines])
+    title = normalize_text(title)
+    if len(title) < 8 or looks_like_title_noise(title) or looks_like_author_affiliation_line(title):
+        return None
+    return title[:180]
+
+
+def join_wrapped_title_lines(lines: list[str]) -> str:
+    title = ""
+    for line in lines:
+        cleaned = normalize_text(line)
+        if not cleaned:
+            continue
+        if title.endswith("-"):
+            title = title[:-1] + cleaned
+        elif title:
+            title = f"{title} {cleaned}"
+        else:
+            title = cleaned
+    return normalize_text(title)
+
+
+def usable_metadata_title(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned or normalized_key(cleaned) in {"untitled", "none"}:
+        return False
+    return not looks_like_title_noise(cleaned)
+
+
+def looks_like_title_noise(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return True
+    compact = normalized_key(cleaned)
+    if compact in {"untitled", "none"}:
+        return True
+    if "publishedasaconferencepaper" in compact:
+        return True
+    if re.search(r"\bconference\s+paper\s+at\s+(?:iclr|neurips|nips|icml|acl|emnlp|cvpr|eccv|iccv)\b", cleaned, re.IGNORECASE):
+        return True
+    if re.match(r"^(?:under review|preprint|accepted|submitted)\b", cleaned, re.IGNORECASE):
+        return True
+    if re.match(r"^arXiv:\d{4}\.\d+(?:v\d+)?\b", cleaned, re.IGNORECASE):
+        return True
+    return False
+
+
+def looks_like_title_stop_line(text: str) -> bool:
+    return normalized_key(text) in {"abstract", "summary", "introduction", "keywords"}
+
+
+def looks_like_author_affiliation_line(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return False
+    if "@" in cleaned or re.search(r"\b(?:University|Institute|College|Corporation|Google|Microsoft|DeepSeek-AI)\b", cleaned):
+        return True
+    if re.search(r"\b(?:Department|School|Laboratory|Lab)\s+of\b", cleaned, re.IGNORECASE):
+        return True
+    comma_count = cleaned.count(",")
+    if comma_count >= 3 and not mostly_uppercase_words(cleaned):
+        return True
+    return False
+
+
+def mostly_uppercase_words(text: str) -> bool:
+    words = re.findall(r"[A-Za-z][A-Za-z-]*", text)
+    if not words:
+        return False
+    long_words = [word for word in words if len(word) >= 3]
+    if not long_words:
+        return False
+    uppercase = [word for word in long_words if word.upper() == word]
+    return len(uppercase) / len(long_words) >= 0.72
+
+
 def normalize_text(text: str) -> str:
     ligatures = {
         "\ufb00": "ff",
@@ -696,21 +998,204 @@ def normalize_text(text: str) -> str:
     }
     for source, replacement in ligatures.items():
         text = text.replace(source, replacement)
+    text = repair_misdecoded_pdf_ligatures(text)
+    text = replace_common_cid_glyphs(text)
+    text = text.replace("\x00", "")
+    text = text.replace("\ufffd", "")
     text = text.replace("\u00a0", " ")
     return re.sub(r"\s+", " ", text).strip()
+
+
+def strip_wrapped_title_continuation(text: str, document_title: str, page_number: int) -> str:
+    """Drop all-caps title continuation fragments that leak into page-one bylines."""
+
+    cleaned = normalize_text(text)
+    title = normalize_text(document_title)
+    if page_number != 1 or not cleaned or not title:
+        return cleaned
+    title_key = normalized_key(title)
+    tokens = cleaned.split()
+    for token_count in range(min(8, len(tokens)), 0, -1):
+        prefix = " ".join(tokens[:token_count])
+        prefix_key = normalized_key(prefix)
+        if len(prefix_key) < 8 or prefix_key not in title_key:
+            continue
+        if not all(token.strip(",:;()[]{}").upper() == token.strip(",:;()[]{}") for token in tokens[:token_count]):
+            continue
+        return normalize_text(" ".join(tokens[token_count:]))
+    if not title.endswith("-"):
+        return cleaned
+    title_prefix = re.search(r"([A-Z]{2,})-\s*$", title.upper())
+    if title_prefix is None:
+        return cleaned
+    if cleaned.lower().startswith(title.lower()):
+        cleaned = normalize_text(cleaned[len(title) :])
+
+    tokens = cleaned.split()
+    drop_count = 0
+    for token in tokens[:8]:
+        stripped = token.strip(",:;()[]{}")
+        if not re.fullmatch(r"[A-Z][A-Z-]{1,}", stripped):
+            break
+        drop_count += 1
+        if len(stripped) >= 3 and stripped.endswith("S"):
+            # Most wrapped scientific titles end with a plural noun such as MODELS.
+            break
+    if drop_count == 0:
+        return cleaned
+    return normalize_text(" ".join(tokens[drop_count:]))
+
+
+MISDECODED_PDF_LIGATURES = {
+    "!": "fi",
+    '"': "ffi",
+    "”": "ffi",
+    "#": "ff",
+    "$": "fl",
+    "%": "ffl",
+}
+
+MISDECODED_PDF_LIGATURE_RE = re.compile(
+    r'(?:(?<=[A-Za-z])!(?=[ceglnrtv])|(?<![A-Za-z])!(?=[a-z])|(?<=[A-Za-z])["”](?=[cils])|'
+    r"(?<=[A-Za-z])\#(?=[eilos])|(?<=[A-Za-z])\$(?=[aeiouly])|"
+    r"(?<=[A-Za-z])%(?=[aeiouy]))"
+)
+
+FUSED_LEADING_FI_WORD_RE = re.compile(r"(?<=[a-z])!ve\b")
+CONTEXTUAL_MISDECODED_LIGATURE_RE = re.compile(r"(?<=o)!(?=s)|(?<=-o)!(?=$)")
+CID_GLYPH_RE = re.compile(r"\(cid:(\d+)\)")
+SUSPICIOUS_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd\ufffe]")
+COMMON_CID_GLYPHS = {
+    "0": "(",
+    "1": ")",
+    "2": "[",
+    "3": "]",
+    "8": "{",
+    "9": "}",
+    "16": "(",
+    "17": ")",
+    "18": "(",
+    "19": ")",
+    "20": "[",
+    "21": "]",
+    "33": ")",
+    "35": "]",
+    "40": "{",
+    "54": "≠",
+    "55": "↦",
+    "80": "∑",
+    "88": "∑",
+    "89": "∏",
+    "116": "√",
+    "122": "z",
+    "123": "{",
+    "124": "|",
+    "125": "}",
+}
+
+
+def has_misdecoded_pdf_ligatures(text: str) -> bool:
+    return bool(
+        MISDECODED_PDF_LIGATURE_RE.search(text)
+        or CONTEXTUAL_MISDECODED_LIGATURE_RE.search(text)
+    )
+
+
+def has_unreadable_pdf_glyphs(text: str) -> bool:
+    return bool(CID_GLYPH_RE.search(text) or SUSPICIOUS_CONTROL_RE.search(text))
+
+
+def unreadable_pdf_glyph_score(text: str) -> int:
+    return len(CID_GLYPH_RE.findall(text)) * 3 + len(SUSPICIOUS_CONTROL_RE.findall(text))
+
+
+def replace_common_cid_glyphs(text: str) -> str:
+    return CID_GLYPH_RE.sub(
+        lambda match: COMMON_CID_GLYPHS.get(match.group(1), match.group(0)),
+        text,
+    )
+
+
+def repair_segment_text_with_pdfium(
+    pdf_page: PdfiumPage,
+    bbox: BBox,
+    raw_text: str,
+    normalized_text: str,
+) -> str:
+    if not (has_unreadable_pdf_glyphs(raw_text) or has_unreadable_pdf_glyphs(normalized_text)):
+        return normalized_text
+    candidate = normalize_text(normalize_pdfium_control_chars(pdf_page.extract_text_bounded(bbox)))
+    if not candidate:
+        return normalized_text
+    if unreadable_pdf_glyph_score(candidate) >= unreadable_pdf_glyph_score(normalized_text):
+        return normalized_text
+    if not plausible_pdfium_replacement(normalized_text, candidate):
+        return normalized_text
+    return candidate
+
+
+def plausible_pdfium_replacement(original: str, candidate: str) -> bool:
+    candidate_words = re.findall(r"\b[A-Za-z0-9]{2,}\b", candidate)
+    candidate_math = count_mathish_chars(candidate) + true_formula_operator_count(candidate)
+    if len(candidate_words) == 0 and candidate_math == 0:
+        return False
+    original_length = max(1, len(original))
+    if len(candidate) > max(240, original_length * 5):
+        return False
+    return True
+
+
+def normalize_pdfium_control_chars(text: str) -> str:
+    cleaned = text.replace("\ufffe", "")
+    cleaned = re.sub(r"(?<=[A-Za-z])[\x02\x03](?=[A-Za-z])", "", cleaned)
+    cleaned = cleaned.replace("\x02", "[").replace("\x03", "]")
+    cleaned = re.sub(r"[\x00\x01\x04-\x08\x0b\x0c\x0e-\x1f\ufffd]", "", cleaned)
+    return cleaned
+
+
+def strip_orphan_math_prefix(text: str) -> str:
+    return normalize_text(
+        re.sub(
+            r"^(?:(?:\(cid:\d+\)|[()[\]{}|∑∏√≠↦,;:.])\s*)+(?=[A-Z][a-z])",
+            "",
+            normalize_text(text),
+        )
+    )
+
+
+def repair_misdecoded_pdf_ligatures(text: str) -> str:
+    """Repair common PDF font maps that expose ligature glyphs as ASCII punctuation."""
+
+    text = FUSED_LEADING_FI_WORD_RE.sub(" five", text)
+    text = CONTEXTUAL_MISDECODED_LIGATURE_RE.sub("ff", text)
+    return MISDECODED_PDF_LIGATURE_RE.sub(
+        lambda match: MISDECODED_PDF_LIGATURES[match.group(0)],
+        text,
+    )
 
 
 def normalized_key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", normalize_text(text).lower())
 
 
-def is_metadata_or_noise(text: str, page_number: int, document_title: str) -> bool:
+def is_metadata_or_noise(
+    text: str,
+    page_number: int,
+    document_title: str,
+    line: dict[str, Any] | None = None,
+) -> bool:
     cleaned = normalize_text(text)
     if not cleaned:
         return True
     if re.fullmatch(r"\d{1,4}", cleaned):
         return True
     if normalized_key(cleaned) == normalized_key(document_title):
+        return True
+    if looks_like_repeating_page_header_noise(cleaned):
+        return True
+    if page_number == 1 and looks_like_title_noise(cleaned):
+        return True
+    if page_number == 1 and is_document_title_fragment(cleaned, document_title, line):
         return True
     if cleaned.startswith("*Equal contribution"):
         return True
@@ -727,6 +1212,41 @@ def is_metadata_or_noise(text: str, page_number: int, document_title: str) -> bo
     return False
 
 
+def looks_like_repeating_page_header_noise(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return False
+    compact = normalized_key(cleaned)
+    if "publishedasaconferencepaper" in compact:
+        return True
+    if re.match(r"^arXiv:\d{4}\.\d+(?:v\d+)?\b", cleaned, re.IGNORECASE):
+        return True
+    return False
+
+
+def is_document_title_fragment(
+    text: str,
+    document_title: str,
+    line: dict[str, Any] | None = None,
+) -> bool:
+    if looks_like_title_stop_line(text):
+        return False
+    title_key = normalized_key(document_title)
+    text_key = normalized_key(text)
+    if len(text_key) < 8 or len(title_key) < 8 or text_key not in title_key:
+        return False
+    if line is not None:
+        bbox = line.get("bbox")
+        if bbox is not None and float(bbox[1]) > 185:
+            return False
+        font_size = float(line.get("font_size") or 0)
+        if font_size and font_size < 11:
+            return False
+    if len(text_key) / len(title_key) >= 0.18:
+        return True
+    return mostly_uppercase_words(text)
+
+
 def normalize_block_lines(lines: list[str]) -> str:
     result = ""
     for raw_line in lines:
@@ -738,6 +1258,979 @@ def normalize_block_lines(lines: list[str]) -> str:
             continue
         result = join_wrapped_text(result, line)
     return normalize_text(result)
+
+
+TOC_DOT_LEADER_RE = re.compile(r"(?:\s*[.·]\s*){3,}")
+TOC_SECTION_LABEL_RE = re.compile(
+    r"^(?P<number>\d+(?:\.\d+)*)(?:\.|\s)+(?P<title>.+)$"
+)
+
+
+def toc_targets_by_title(entries: list[PdfTocEntry]) -> dict[str, PdfTocEntry]:
+    targets: dict[str, PdfTocEntry | None] = {}
+    for entry in entries:
+        key = toc_title_key(entry.title)
+        if not key:
+            continue
+        existing = targets.get(key)
+        if existing is None and key in targets:
+            continue
+        if existing is not None and existing.page != entry.page:
+            targets[key] = None
+            continue
+        targets[key] = entry
+    return {key: entry for key, entry in targets.items() if entry is not None}
+
+
+def toc_title_key(text: str) -> str:
+    cleaned = normalize_text(text).strip()
+    cleaned = TOC_SECTION_LABEL_RE.sub(lambda match: match.group("title"), cleaned)
+    return normalized_key(cleaned)
+
+
+def extract_page_links(plumber_page: pdfplumber.page.Page) -> list[dict[str, Any]]:
+    links: list[dict[str, Any]] = []
+    try:
+        annots = plumber_page.annots or []
+    except Exception:
+        return links
+    for annot in annots:
+        uri = annot.get("uri")
+        if not isinstance(uri, str) or not safe_external_href(uri):
+            continue
+        try:
+            bbox = (
+                float(annot["x0"]),
+                float(annot["top"]),
+                float(annot["x1"]),
+                float(annot["bottom"]),
+            )
+        except Exception:
+            continue
+        links.append({"bbox": bbox, "href": uri})
+    return links
+
+
+def extract_contents_block(
+    segments: list[dict[str, Any]],
+    page_number: int,
+    toc_targets: dict[str, PdfTocEntry],
+    page_links: list[dict[str, Any]] | None = None,
+) -> TextBlock | None:
+    rows = group_segments_into_rows(segments)
+    if not rows:
+        return None
+
+    page_links = page_links or []
+    header_boxes = [
+        union_bboxes([segment["bbox"] for segment in row])
+        for row in rows
+        if is_contents_heading(row_text(row))
+    ]
+    items: list[dict[str, Any]] = []
+    item_boxes: list[BBox] = []
+    leader_rows = 0
+
+    for row in rows:
+        parsed = parse_toc_row(row)
+        if parsed is None:
+            continue
+        if parsed["had_leader"]:
+            leader_rows += 1
+        target_entry = resolve_toc_entry(parsed["title"], toc_targets)
+        target_page = target_entry.page if target_entry and target_entry.page else parsed["target_page"]
+        href = external_href_for_bbox(parsed["bbox"], page_links)
+        if not href and target_page:
+            href = f"#page-{target_page}"
+
+        item: dict[str, Any] = {
+            "label": parsed["label"],
+            "title": parsed["title"],
+            "page_label": parsed["page_label"],
+            "level": parsed["level"],
+        }
+        if parsed["number"]:
+            item["number"] = parsed["number"]
+        if target_page:
+            item["target_page"] = target_page
+        if href:
+            item["href"] = href
+        items.append(item)
+        item_boxes.append(parsed["bbox"])
+
+    if len(items) < 3:
+        return None
+    has_header = bool(header_boxes)
+    if not has_header and leader_rows < 3:
+        return None
+
+    text = "\n".join(
+        f"{item['label']} {item['page_label']}".strip()
+        for item in items
+        if item.get("label")
+    )
+    if not text:
+        return None
+
+    bbox = union_bboxes([*header_boxes, *item_boxes] if header_boxes else item_boxes)
+    return TextBlock(
+        page=page_number,
+        bbox=bbox,
+        text=text,
+        kind="contents",
+        items=items,
+    )
+
+
+def group_segments_into_rows(segments: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    sorted_segments = sorted(
+        segments,
+        key=lambda segment: (float(segment["bbox"][1]), float(segment["bbox"][0])),
+    )
+    rows: list[list[dict[str, Any]]] = []
+    row_tops: list[float] = []
+    for segment in sorted_segments:
+        top = float(segment["bbox"][1])
+        if rows and abs(top - row_tops[-1]) <= 3.5:
+            rows[-1].append(segment)
+            row_tops[-1] = median([float(item["bbox"][1]) for item in rows[-1]])
+            continue
+        rows.append([segment])
+        row_tops.append(top)
+    return [sorted(row, key=lambda segment: float(segment["bbox"][0])) for row in rows]
+
+
+def row_text(row: list[dict[str, Any]]) -> str:
+    return normalize_text(" ".join(str(segment.get("text", "")) for segment in row))
+
+
+def is_contents_heading(text: str) -> bool:
+    return normalized_key(text) in {"contents", "tableofcontents"}
+
+
+def parse_toc_row(row: list[dict[str, Any]]) -> dict[str, Any] | None:
+    text = row_text(row)
+    if not text or is_contents_heading(text):
+        return None
+    if re.fullmatch(r"\d{1,4}", text):
+        return None
+
+    sorted_row = sorted(row, key=lambda segment: float(segment["bbox"][0]))
+    last_text = normalize_text(str(sorted_row[-1].get("text", "")))
+    body = text
+    page_label = ""
+    had_leader = bool(TOC_DOT_LEADER_RE.search(text))
+
+    if len(sorted_row) > 1 and re.fullmatch(r"\d{1,4}", last_text):
+        body = normalize_text(" ".join(str(segment.get("text", "")) for segment in sorted_row[:-1]))
+        page_label = last_text
+    else:
+        leader_match = re.match(
+            rf"^(?P<body>.+?){TOC_DOT_LEADER_RE.pattern}\s*(?P<page>\d{{1,4}})$",
+            text,
+        )
+        if leader_match:
+            body = normalize_text(leader_match.group("body"))
+            page_label = leader_match.group("page")
+            had_leader = True
+        else:
+            trailing_page = re.match(r"^(?P<body>.+?)\s+(?P<page>\d{1,4})$", text)
+            if trailing_page and looks_like_toc_label(trailing_page.group("body")):
+                body = trailing_page.group("body")
+                page_label = trailing_page.group("page")
+
+    label = clean_toc_label(body)
+    if not label or not page_label or not re.fullmatch(r"\d{1,4}", page_label):
+        return None
+    if not had_leader and not looks_like_toc_label(label):
+        return None
+
+    number, title = split_toc_label(label)
+    if not title:
+        return None
+    target_page = int(page_label) if page_label.isdigit() else None
+    level = max(0, number.count(".")) if number else 0
+    return {
+        "number": number,
+        "title": title,
+        "label": label,
+        "page_label": page_label,
+        "target_page": target_page,
+        "level": level,
+        "had_leader": had_leader,
+        "bbox": union_bboxes([segment["bbox"] for segment in row]),
+    }
+
+
+def clean_toc_label(text: str) -> str:
+    cleaned = TOC_DOT_LEADER_RE.sub(" ", text)
+    cleaned = re.sub(r"\s+\.+\s*$", "", cleaned)
+    return normalize_text(cleaned)
+
+
+def looks_like_toc_label(text: str) -> bool:
+    cleaned = clean_toc_label(text)
+    if not cleaned or len(cleaned) > 160:
+        return False
+    if TOC_SECTION_LABEL_RE.match(cleaned):
+        return True
+    return bool(re.search(r"[A-Za-z]{3,}", cleaned)) and len(cleaned.split()) <= 14
+
+
+def split_toc_label(label: str) -> tuple[str, str]:
+    match = TOC_SECTION_LABEL_RE.match(label)
+    if match is None:
+        return "", label.strip()
+    return match.group("number"), normalize_text(match.group("title"))
+
+
+def resolve_toc_entry(
+    title: str,
+    toc_targets: dict[str, PdfTocEntry],
+) -> PdfTocEntry | None:
+    return toc_targets.get(toc_title_key(title))
+
+
+def external_href_for_bbox(bbox: BBox, links: list[dict[str, Any]]) -> str:
+    for link in links:
+        link_bbox = link.get("bbox")
+        href = link.get("href")
+        if not isinstance(link_bbox, tuple) or not isinstance(href, str):
+            continue
+        if vertical_gap(bbox, link_bbox) <= 3 and horizontal_overlap_ratio(bbox, link_bbox) > 0:
+            return href
+    return ""
+
+
+def safe_external_href(href: str) -> bool:
+    return bool(re.match(r"^(?:https?://|mailto:)", href, re.IGNORECASE))
+
+
+@dataclass(frozen=True, slots=True)
+class AlgorithmRow:
+    row: list[dict[str, Any]]
+    bbox: BBox
+    text: str
+    score: int
+    strong: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FormulaRow:
+    row: list[dict[str, Any]]
+    bbox: BBox
+    text: str
+    score: int
+    strong: bool
+
+
+FORMULA_OPERATOR_RE = re.compile(
+    r"(?:->|=>|←|→|↔|=|≤|≥|≠|≈|∈|∉|∑|∏|∫|√|±|∂|∞|"
+    r"\b(?:arg\s*max|arg\s*min|min|max|clip|log|mean|std)\b)"
+)
+BINARY_MATH_OPERATOR_RE = re.compile(
+    r"(?:(?<=[A-Za-z0-9)\]}])\s*[+*/]\s*(?=[A-Za-z0-9({\[])|"
+    r"(?<=[A-Za-z0-9)\]}])\s+-\s+(?=[A-Za-z0-9({\[]))"
+)
+URLISH_TEXT_RE = re.compile(
+    r"(?:https?://|www\.|(?:^|\s)(?:url|doi):|"
+    r"(?:github|arxiv|aclanthology|openreview|codeforces|aider)\.(?:com|org|net|chat)\b|"
+    r"\.(?:com|org|net|edu|gov|io|pdf)\b)",
+    re.IGNORECASE,
+)
+PATHLIKE_TEXT_RE = re.compile(r"(?:^|\s)[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]{3,}")
+ALGORITHM_HEADER_RE = re.compile(
+    r"^\s*(?:Algorithm|ALGORITHM)\s+\d+[A-Za-z]?\b(?:\s+[A-Z][A-Za-z0-9_-]+|\s*$)",
+)
+ALGORITHM_IO_RE = re.compile(
+    r"^(?:Require|Inputs?|Outputs?|Ensure|Initialize|Init)\s*:",
+    re.IGNORECASE,
+)
+ALGORITHM_IO_ANY_RE = re.compile(
+    r"\b(?:Require|Inputs?|Outputs?|Ensure|Initialize|Init)\s*:",
+    re.IGNORECASE,
+)
+ALGORITHM_LINE_NUMBER_RE = re.compile(r"^\s*\d{1,3}\s*:")
+ALGORITHM_CONTROL_RE = re.compile(
+    r"^(?:"
+    r"\d{1,3}\s*:\s*)?"
+    r"(?:for\b.+\bdo\b|while\b.+\bdo\b|if\b.+\bthen\b|else\b|"
+    r"end\s+(?:if|for|while|function|procedure)\b|return\b|repeat\b|until\b|"
+    r"function\b|procedure\b)"
+    r"",
+    re.IGNORECASE,
+)
+ALGORITHM_ASSIGNMENT_RE = re.compile(
+    r"(?:←|<-|:=|\barg\s*max\b|\barg\s*min\b|\bclip\b|\bmin\b|\bmax\b)", re.IGNORECASE
+)
+ALGORITHM_KEYWORD_RE = re.compile(
+    r"\b(?:DRAFT|VERIFY|CORRECT|STANDARDNMS|SHOULDMERGE|MERGE|NMS|CALL|BREAK|CONTINUE)\b"
+)
+
+
+def extract_algorithm_blocks(
+    segments: list[dict[str, Any]],
+    page_number: int,
+    page_rect: PageRect,
+) -> list[TextBlock]:
+    column_blocks = extract_column_algorithm_blocks(segments, page_number, page_rect)
+    if column_blocks:
+        return column_blocks
+
+    rows = group_segments_into_rows(segments)
+    blocks: list[TextBlock] = []
+    current: list[AlgorithmRow] = []
+
+    def flush_current() -> None:
+        nonlocal current
+        if algorithm_group_is_block(current):
+            bbox = trim_algorithm_group_bbox(current, page_rect)
+            blocks.append(
+                TextBlock(
+                    page=page_number,
+                    bbox=bbox,
+                    text=normalize_block_lines([row.text for row in current]),
+                    kind="formula",
+                )
+            )
+        current = []
+
+    previous_bbox: BBox | None = None
+    for row in rows:
+        algorithm_row = classify_algorithm_row(row, page_rect)
+        if algorithm_row is None:
+            flush_current()
+            previous_bbox = None
+            continue
+        if current and previous_bbox is not None and vertical_gap(previous_bbox, algorithm_row.bbox) > 18:
+            flush_current()
+        current.append(algorithm_row)
+        previous_bbox = algorithm_row.bbox
+    flush_current()
+    return blocks
+
+
+def extract_column_algorithm_blocks(
+    segments: list[dict[str, Any]],
+    page_number: int,
+    page_rect: PageRect,
+) -> list[TextBlock]:
+    rows = group_segments_into_rows(segments)
+    anchors: list[tuple[int, dict[str, Any]]] = []
+    for row_index, row in enumerate(rows):
+        for segment in row:
+            if ALGORITHM_HEADER_RE.search(normalize_text(str(segment.get("text", "")))):
+                anchors.append((row_index, segment))
+    if not anchors:
+        return []
+
+    blocks: list[TextBlock] = []
+    for anchor_index, (row_index, anchor) in enumerate(anchors):
+        x_range = algorithm_anchor_x_range(anchor, anchors, anchor_index, page_rect)
+        block_rows = collect_algorithm_column_rows(rows, row_index, x_range)
+        if len(block_rows) < 2:
+            continue
+        bbox = trim_algorithm_column_bbox(block_rows, page_rect)
+        text = normalize_block_lines([row["text"] for row in block_rows])
+        blocks.append(TextBlock(page=page_number, bbox=bbox, text=text, kind="formula"))
+    return merge_overlapping_algorithm_blocks(blocks)
+
+
+def algorithm_anchor_x_range(
+    anchor: dict[str, Any],
+    anchors: list[tuple[int, dict[str, Any]]],
+    anchor_index: int,
+    page_rect: PageRect,
+) -> tuple[float, float]:
+    same_band = [
+        segment
+        for row_index, segment in anchors
+        if abs(float(segment["bbox"][1]) - float(anchor["bbox"][1])) <= 8
+    ]
+    same_band = sorted(same_band, key=lambda segment: float(segment["bbox"][0]))
+    if len(same_band) >= 2 and anchor in same_band:
+        band_index = same_band.index(anchor)
+        centers = [(float(segment["bbox"][0]) + float(segment["bbox"][2])) / 2 for segment in same_band]
+        left = page_rect.x0
+        right = page_rect.x1
+        if band_index > 0:
+            left = (centers[band_index - 1] + centers[band_index]) / 2
+        if band_index < len(same_band) - 1:
+            right = (centers[band_index] + centers[band_index + 1]) / 2
+        return (left, right)
+
+    bbox = tuple(float(value) for value in anchor["bbox"])
+    width = max(page_rect.width * 0.32, bbox[2] - bbox[0] + 80)
+    center = (bbox[0] + bbox[2]) / 2
+    return (
+        max(page_rect.x0, center - width / 2),
+        min(page_rect.x1, center + width / 2),
+    )
+
+
+def collect_algorithm_column_rows(
+    rows: list[list[dict[str, Any]]],
+    start_index: int,
+    x_range: tuple[float, float],
+) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    previous_bbox: BBox | None = None
+    started = False
+    ended = False
+
+    for row in rows[start_index:]:
+        column_segments = segments_in_x_range(row, x_range)
+        if not column_segments:
+            if started and previous_bbox is not None:
+                row_bbox = union_bboxes([segment["bbox"] for segment in row])
+                if float(row_bbox[1]) - previous_bbox[3] > 18:
+                    break
+                continue
+            if started:
+                break
+            continue
+        column_text = normalize_text(" ".join(str(segment.get("text", "")) for segment in column_segments))
+        if not column_text:
+            continue
+        column_bbox = union_bboxes([segment["bbox"] for segment in column_segments])
+        gap = vertical_gap(previous_bbox, column_bbox) if previous_bbox is not None else 0.0
+        qualifies = algorithm_column_row_qualifies(column_text, started, ended, gap)
+        if not qualifies:
+            if started and gap > 10:
+                break
+            continue
+
+        collected.append({"bbox": column_bbox, "text": column_text})
+        previous_bbox = column_bbox
+        started = True
+        if algorithm_column_row_ends_block(column_text):
+            ended = True
+    return collected
+
+
+def segments_in_x_range(
+    row: list[dict[str, Any]],
+    x_range: tuple[float, float],
+) -> list[dict[str, Any]]:
+    left, right = x_range
+    result: list[dict[str, Any]] = []
+    for segment in row:
+        bbox = tuple(float(value) for value in segment["bbox"])
+        center = (bbox[0] + bbox[2]) / 2
+        if left - 2 <= center <= right + 2:
+            result.append(segment)
+    return result
+
+
+def algorithm_column_row_qualifies(
+    text: str,
+    started: bool,
+    ended: bool,
+    gap: float,
+) -> bool:
+    cleaned = normalize_text(text)
+    if not started:
+        return bool(ALGORITHM_HEADER_RE.search(cleaned))
+    if ended and gap > 4:
+        return False
+    if row_has_algorithm_marker(cleaned) or algorithm_segment_score(cleaned) >= 2:
+        return True
+    if gap > 14:
+        return False
+    if looks_like_algorithm_continuation(cleaned):
+        return True
+    if gap <= 4 and len(cleaned) <= 90 and not looks_like_formula_boundary_prose(cleaned):
+        return True
+    return False
+
+
+def looks_like_algorithm_continuation(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return False
+    if len(cleaned) > 130 and looks_like_formula_boundary_prose(cleaned):
+        return False
+    if cleaned.startswith("//"):
+        return True
+    if re.match(r"^\.\s*[A-Z]", cleaned):
+        return True
+    if re.search(r"(?:←|<-|:=|∼|~|\bDRAFT\b|\bVERIFY\b|\bCORRECT\b)", cleaned):
+        return True
+    if true_formula_operator_count(cleaned) >= 1 and count_mathish_chars(cleaned) >= 2:
+        return True
+    if len(cleaned.split()) <= 10 and count_mathish_chars(cleaned) >= 2:
+        return True
+    return False
+
+
+def algorithm_column_row_ends_block(text: str) -> bool:
+    cleaned = normalize_text(text)
+    return bool(re.match(r"^\s*\d{1,3}\s*:\s*end\s+(?:while|for|if|function|procedure)\b", cleaned, re.IGNORECASE))
+
+
+def trim_algorithm_column_bbox(rows: list[dict[str, Any]], page_rect: PageRect) -> BBox:
+    bbox = union_bboxes([row["bbox"] for row in rows])
+    return (
+        max(page_rect.x0, bbox[0] - 4),
+        max(page_rect.y0, bbox[1] - 2),
+        min(page_rect.x1, bbox[2] + 4),
+        min(page_rect.y1, bbox[3] + 2),
+    )
+
+
+def merge_overlapping_algorithm_blocks(blocks: list[TextBlock]) -> list[TextBlock]:
+    merged: list[TextBlock] = []
+    for block in sorted(blocks, key=lambda candidate: (candidate.bbox[1], candidate.bbox[0])):
+        if merged and overlap_ratio(block.bbox, merged[-1].bbox) > 0.85:
+            previous = merged[-1]
+            merged[-1] = TextBlock(
+                page=previous.page,
+                bbox=union_bboxes([previous.bbox, block.bbox]),
+                text=normalize_block_lines([previous.text, block.text]),
+                kind=previous.kind,
+            )
+            continue
+        merged.append(block)
+    return merged
+
+
+def classify_algorithm_row(
+    row: list[dict[str, Any]],
+    page_rect: PageRect,
+) -> AlgorithmRow | None:
+    text = row_text(row)
+    if not text or re.fullmatch(r"\d{1,4}", text):
+        return None
+    if looks_like_formula_boundary_prose(text) and not row_has_algorithm_marker(text):
+        return None
+
+    hit_boxes: list[BBox] = []
+    score = algorithm_text_score(text)
+    for segment in row:
+        segment_text = normalize_text(str(segment.get("text", "")))
+        if algorithm_segment_score(segment_text) >= 2:
+            hit_boxes.append(tuple(float(value) for value in segment["bbox"]))
+
+    if not hit_boxes and score < 3:
+        return None
+
+    bbox = union_bboxes(hit_boxes) if hit_boxes else union_bboxes([segment["bbox"] for segment in row])
+    width = bbox[2] - bbox[0]
+    if width > page_rect.width * 0.92 and not row_has_algorithm_marker(text):
+        return None
+
+    strong = row_has_algorithm_marker(text) or score >= 4
+    return AlgorithmRow(row=row, bbox=bbox, text=text, score=score, strong=strong)
+
+
+def row_has_algorithm_marker(text: str) -> bool:
+    cleaned = normalize_text(text)
+    return bool(
+        ALGORITHM_HEADER_RE.search(cleaned)
+        or ALGORITHM_IO_RE.search(cleaned)
+        or ALGORITHM_IO_ANY_RE.search(cleaned)
+        or ALGORITHM_LINE_NUMBER_RE.search(cleaned)
+        or ALGORITHM_CONTROL_RE.search(cleaned)
+    )
+
+
+def algorithm_text_score(text: str) -> int:
+    cleaned = normalize_text(text)
+    score = algorithm_segment_score(cleaned)
+    if looks_like_formula_prose(cleaned) and not row_has_algorithm_marker(cleaned):
+        score -= 3
+    word_count = len(re.findall(r"\b[A-Za-z]{3,}\b", cleaned))
+    if word_count >= 12 and not ALGORITHM_HEADER_RE.search(cleaned):
+        score -= 2
+    return max(0, score)
+
+
+def algorithm_segment_score(text: str) -> int:
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return 0
+    score = 0
+    if ALGORITHM_HEADER_RE.search(cleaned):
+        score += 5
+    if ALGORITHM_IO_RE.search(cleaned) or ALGORITHM_IO_ANY_RE.search(cleaned):
+        score += 4
+    if ALGORITHM_LINE_NUMBER_RE.search(cleaned):
+        score += 3
+    if ALGORITHM_CONTROL_RE.search(cleaned):
+        score += 4
+    if ALGORITHM_ASSIGNMENT_RE.search(cleaned):
+        score += 2
+    if ALGORITHM_KEYWORD_RE.search(cleaned):
+        score += 2
+    if looks_like_code_line(cleaned):
+        score += 2
+    if cleaned.startswith("//"):
+        score += 2
+    if re.search(r"\b(?:do|then)\s*$", cleaned, re.IGNORECASE):
+        score += 2
+    if re.search(r"\b(?:state|score|token|draft|verify|candidate)s?\b", cleaned, re.IGNORECASE):
+        score += 1
+    return score
+
+
+def algorithm_group_is_block(rows: list[AlgorithmRow]) -> bool:
+    if len(rows) < 2:
+        return False
+    text = normalize_block_lines([row.text for row in rows])
+    if ALGORITHM_HEADER_RE.search(text):
+        return len(rows) >= 2 and sum(1 for row in rows if row.score >= 3) >= 2
+    strong_count = sum(1 for row in rows if row.strong)
+    numbered_count = sum(1 for row in rows if ALGORITHM_LINE_NUMBER_RE.search(row.text))
+    return strong_count >= 2 and (numbered_count >= 2 or len(rows) >= 3)
+
+
+def trim_algorithm_group_bbox(rows: list[AlgorithmRow], page_rect: PageRect) -> BBox:
+    bbox = union_bboxes([row.bbox for row in rows])
+    x0 = max(page_rect.x0, bbox[0] - 4)
+    top = max(page_rect.y0, bbox[1] - 2)
+    x1 = min(page_rect.x1, bbox[2] + 4)
+    bottom = min(page_rect.y1, bbox[3] + 2)
+    return (x0, top, x1, bottom)
+
+
+def extract_formula_blocks(
+    segments: list[dict[str, Any]],
+    page_number: int,
+    page_rect: PageRect,
+) -> list[TextBlock]:
+    rows = group_segments_into_rows(segments)
+    classified_rows = [(row, classify_formula_row(row, page_rect)) for row in rows]
+    prose_bboxes = [
+        union_bboxes([segment["bbox"] for segment in row])
+        for row, formula_row in classified_rows
+        if formula_row is None and looks_like_formula_boundary_prose(row_text(row))
+    ]
+    blocks: list[TextBlock] = []
+    current: list[FormulaRow] = []
+    pending: list[FormulaRow] = []
+
+    def flush_current(next_prose_bbox: BBox | None = None) -> None:
+        nonlocal current
+        if current and formula_group_is_display_formula(current):
+            bbox = trim_formula_group_bbox(current, page_rect, next_prose_bbox)
+            blocks.append(
+                TextBlock(
+                    page=page_number,
+                    bbox=bbox,
+                    text=normalize_block_lines([row.text for row in current]),
+                    kind="formula",
+                )
+            )
+        current = []
+
+    previous_bbox: BBox | None = None
+    for row, formula_row in classified_rows:
+        row_bbox = union_bboxes([segment["bbox"] for segment in row])
+        if formula_row is None:
+            next_prose_bbox = row_bbox if looks_like_formula_boundary_prose(row_text(row)) else None
+            flush_current(next_prose_bbox)
+            pending = []
+            previous_bbox = None
+            continue
+
+        if current:
+            if previous_bbox is not None and vertical_gap(previous_bbox, formula_row.bbox) > 18:
+                flush_current()
+                pending = []
+            if current:
+                current.append(formula_row)
+                previous_bbox = formula_row.bbox
+                continue
+
+        if formula_row.strong:
+            attachable = [
+                weak
+                for weak in pending
+                if weak_formula_row_attaches_to_strong(weak, formula_row, prose_bboxes)
+            ]
+            current = [*attachable, formula_row]
+            pending = []
+            previous_bbox = formula_row.bbox
+            continue
+
+        pending.append(formula_row)
+        pending = pending[-3:]
+    flush_current()
+    return blocks
+
+
+def containing_text_block_index(bbox: BBox, blocks: list[TextBlock]) -> int | None:
+    for index, block in enumerate(blocks):
+        if region_contains_text_block(bbox, block.bbox):
+            return index
+    return None
+
+
+def containing_formula_block_index(bbox: BBox, formula_blocks: list[TextBlock]) -> int | None:
+    return containing_text_block_index(bbox, formula_blocks)
+
+
+def classify_formula_row(
+    row: list[dict[str, Any]],
+    page_rect: PageRect,
+) -> FormulaRow | None:
+    text = row_text(row)
+    if not text or re.fullmatch(r"\d{1,4}", text):
+        return None
+    bbox = union_bboxes([segment["bbox"] for segment in row])
+    score = formula_row_score(row, bbox, page_rect, text)
+    if score < 3 and looks_like_formula_bridge_fragment(text, bbox, page_rect):
+        score = 3
+    if score < 3:
+        return None
+    strong = is_strong_formula_row(row, bbox, page_rect, text, score)
+    return FormulaRow(row=row, bbox=bbox, text=text, score=score, strong=strong)
+
+
+def formula_row_score(
+    row: list[dict[str, Any]],
+    bbox: BBox,
+    page_rect: PageRect,
+    text: str,
+) -> int:
+    cleaned = normalize_text(text)
+    if looks_like_formula_noise(cleaned) or looks_like_formula_prose(cleaned):
+        return 0
+
+    math_chars = count_mathish_chars(cleaned)
+    operators = true_formula_operator_count(cleaned)
+    equation_number = has_equation_number(row, page_rect)
+    ascii_words = len(re.findall(r"\b[A-Za-z]{3,}\b", cleaned))
+    short_symbol_segments = sum(
+        1
+        for segment in row
+        if len(normalize_text(str(segment.get("text", ""))).split()) <= 3
+        and count_mathish_chars(str(segment.get("text", ""))) > 0
+    )
+    centered = abs(((bbox[0] + bbox[2]) / 2) - (page_rect.width / 2)) <= page_rect.width * 0.28
+
+    score = 0
+    if math_chars >= 2:
+        score += 2
+    if math_chars >= 6:
+        score += 1
+    score += min(operators, 3)
+    if equation_number:
+        score += 2
+    if short_symbol_segments >= 2:
+        score += 1
+    if centered or equation_number:
+        score += 1
+    if ascii_words >= 6 and not equation_number:
+        score -= 3
+    if ascii_words >= 10 and operators < 2:
+        score -= 3
+    if not has_formula_structure(cleaned) and not equation_number:
+        score -= 2
+    return max(0, score)
+
+
+def looks_like_formula_noise(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if URLISH_TEXT_RE.search(cleaned):
+        return True
+    if PATHLIKE_TEXT_RE.search(cleaned) and not has_math_unicode(cleaned) and "=" not in cleaned:
+        return True
+    if re.match(r"^(?:website|action input)\s*:", cleaned, re.IGNORECASE):
+        return True
+    if re.search(
+        r"(?:\$[\d.,]+|/\s*1M\b|\binput tokens\b|\boutput tokens\b|"
+        r"<\s*MODEL\b|\bSAMPLED HERE\b|Don[’']t paraphrase|\\dbname=)",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return True
+    if looks_like_code_line(cleaned):
+        return True
+    if looks_like_numeric_table_row(cleaned):
+        return True
+    return False
+
+
+def looks_like_code_line(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(?:\bdef\s+\w+\(|\breturn\b|#\s+\w|->\s*(?:List|Dict|str|int|float)\b|"
+            r"\bif\s+.+(?:[:{]\s*$|\{)|==\s*[\"']|:=|\binput\s*\.\s*\w+|"
+            r"github\s*\.\s*com\s*/|\binput\s*\(|"
+            r"\b[a-z][A-Za-z0-9_]*\s*=\s*[A-Za-z_][A-Za-z0-9_]*\s*\(|"
+            r"\b[a-z][A-Za-z0-9_]*\s*=\s*-?[A-Za-z_][A-Za-z0-9_]*\s*\.)",
+            text,
+        )
+    )
+
+
+def looks_like_numeric_table_row(text: str) -> bool:
+    cleaned = normalize_text(text)
+    number_count = len(re.findall(r"\b\d+(?:\.\d+)?%?\b", cleaned))
+    if number_count < 5:
+        return False
+    if has_math_unicode(cleaned) or re.search(r"[_=∑∏∫√±≈∂]", cleaned):
+        return False
+    words = len(re.findall(r"\b[A-Za-z][A-Za-z-]{2,}\b", cleaned))
+    if words >= 2:
+        return True
+    return true_formula_operator_count(cleaned) == 0
+
+
+def looks_like_formula_prose(text: str) -> bool:
+    cleaned = normalize_text(text)
+    ascii_words = len(re.findall(r"\b[A-Za-z]{3,}\b", cleaned))
+    if ascii_words < 5:
+        return False
+    capitalized_words = len(re.findall(r"\b[A-Z][a-z]{2,}\b", cleaned))
+    if "*" in cleaned and capitalized_words >= 3 and true_formula_operator_count(cleaned) <= 2:
+        return True
+    if ascii_words >= 8 and true_formula_operator_count(cleaned) < 2 and not has_math_unicode(cleaned):
+        return True
+    if re.match(
+        r"^(?:where|specifically|policy|group|relative|typically|in|the|this|we|for|and)\b",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return True
+    if cleaned.endswith(":") or cleaned.endswith("."):
+        return True
+    return False
+
+
+def looks_like_formula_boundary_prose(text: str) -> bool:
+    cleaned = normalize_text(text)
+    return len(re.findall(r"\b[A-Za-z]{3,}\b", cleaned)) >= 4
+
+
+def looks_like_formula_bridge_fragment(text: str, bbox: BBox, page_rect: PageRect) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned or len(cleaned) > 24:
+        return False
+    if len(re.findall(r"\b[A-Za-z]{3,}\b", cleaned)) > 0:
+        return False
+    if count_mathish_chars(cleaned) == 0:
+        return False
+    center = (bbox[0] + bbox[2]) / 2
+    return page_rect.width * 0.14 <= center <= page_rect.width * 0.90
+
+
+def true_formula_operator_count(text: str) -> int:
+    return len(FORMULA_OPERATOR_RE.findall(text)) + len(BINARY_MATH_OPERATOR_RE.findall(text))
+
+
+def has_formula_structure(text: str) -> bool:
+    if has_math_unicode(text):
+        return True
+    if re.search(r"[A-Za-z]\s*[_^][A-Za-z0-9{(]", text):
+        return True
+    if re.search(r"[A-Za-z]\s*\([^)]{0,80}\)", text):
+        return True
+    if re.search(
+        r"[A-Za-z0-9)\]}]\s*(?:=|≤|≥|≠|≈|∈|∉|\+|\*|\s-\s|->|=>)\s*[A-Za-z0-9({\[]",
+        text,
+    ):
+        return True
+    if (
+        true_formula_operator_count(text) >= 2
+        and re.search(r"[A-Za-z]\s*\([^)]{0,80}\)\s*/\s*[A-Za-z0-9({\[]", text)
+    ):
+        return True
+    return False
+
+
+def has_math_unicode(text: str) -> bool:
+    for character in text:
+        codepoint = ord(character)
+        if (
+            0x0370 <= codepoint <= 0x03FF
+            or 0x2070 <= codepoint <= 0x209F
+            or 0x2100 <= codepoint <= 0x22FF
+            or 0x1D400 <= codepoint <= 0x1D7FF
+        ):
+            return True
+    return False
+
+
+def count_mathish_chars(text: str) -> int:
+    count = 0
+    for character in text:
+        codepoint = ord(character)
+        if (
+            0x0370 <= codepoint <= 0x03FF
+            or 0x2070 <= codepoint <= 0x209F
+            or 0x2100 <= codepoint <= 0x22FF
+            or 0x1D400 <= codepoint <= 0x1D7FF
+            or character in "_{}|=+-*/<>"
+        ):
+            count += 1
+    return count
+
+
+def has_equation_number(row: list[dict[str, Any]], page_rect: PageRect) -> bool:
+    for segment in row:
+        text = normalize_text(str(segment.get("text", "")))
+        if not re.fullmatch(r"\(\d{1,3}\)", text):
+            continue
+        bbox = tuple(float(value) for value in segment["bbox"])
+        if bbox[0] >= page_rect.width * 0.72:
+            return True
+    return bool(re.search(r"\(\d{1,3}\)\s*$", row_text(row)))
+
+
+def is_strong_formula_row(
+    row: list[dict[str, Any]],
+    bbox: BBox,
+    page_rect: PageRect,
+    text: str,
+    score: int,
+) -> bool:
+    if is_formula_text_line(bbox, page_rect, text):
+        return True
+    if score < 5:
+        return False
+    if has_equation_number(row, page_rect):
+        return True
+    if true_formula_operator_count(text) >= 1 and has_formula_structure(text):
+        return True
+    return False
+
+
+def weak_formula_row_attaches_to_strong(
+    weak: FormulaRow,
+    strong: FormulaRow,
+    prose_bboxes: list[BBox],
+) -> bool:
+    if any(vertical_gap(weak.bbox, prose_bbox) <= 0 for prose_bbox in prose_bboxes):
+        return False
+    if vertical_gap(weak.bbox, strong.bbox) > 10:
+        return False
+    return horizontal_overlap_ratio(weak.bbox, strong.bbox) >= 0.08
+
+
+def formula_group_is_display_formula(rows: list[FormulaRow]) -> bool:
+    if not rows:
+        return False
+    if any(row.strong for row in rows):
+        return True
+    total_score = sum(row.score for row in rows)
+    return len(rows) >= 2 and total_score >= 7
+
+
+def trim_formula_group_bbox(
+    rows: list[FormulaRow],
+    page_rect: PageRect,
+    next_prose_bbox: BBox | None = None,
+) -> BBox:
+    bbox = union_bboxes([row.bbox for row in rows])
+    x0 = max(page_rect.x0, bbox[0] - 4)
+    top = max(page_rect.y0, bbox[1] - 1)
+    x1 = min(page_rect.x1, bbox[2] + 4)
+    bottom = min(page_rect.y1, bbox[3] + 1)
+    if next_prose_bbox is not None and next_prose_bbox[1] <= bottom + 4:
+        bottom = max(top + 18, min(bottom, next_prose_bbox[1] - 3))
+    return (x0, top, x1, bottom)
 
 
 def is_formula_text_line(bbox: BBox, page_rect: PageRect, text: str) -> bool:
@@ -763,23 +2256,21 @@ def is_formula_text_line(bbox: BBox, page_rect: PageRect, text: str) -> bool:
 def looks_like_display_formula_text(text: str) -> bool:
     if len(text) < 3 or len(text) > 180:
         return False
+    if looks_like_formula_noise(text) or looks_like_formula_prose(text):
+        return False
     if re.match(r"^(?:[•*-]|\d+[\.)])\s+", text):
         return False
     if len(text.split()) > 18:
         return False
     if re.fullmatch(r"\d{1,4}", text):
         return False
-    has_operator = bool(
-        re.search(r"(?:->|=>|←|→|↔|=|≤|≥|≠|∈|∉|∑|∏|∫|√|±|≈|∂|∀|∃|\barg\s*max\b|\barg\s*min\b)", text)
-    )
-    has_math_structure = bool(re.search(r"[A-Za-z]\s*[_^][A-Za-z0-9{(]|[(),:;]", text))
-    return has_operator and has_math_structure
+    return true_formula_operator_count(text) > 0 and has_formula_structure(text)
 
 
 def strong_formula_syntax(text: str) -> bool:
-    math_marks = len(re.findall(r"[_^=→←↔≤≥≠∈∉∑∏∫√±≈∂(),:]", text))
+    math_marks = count_mathish_chars(text) + true_formula_operator_count(text)
     alpha_tokens = len(re.findall(r"[A-Za-z]+", text))
-    return math_marks >= 4 and alpha_tokens <= 10
+    return math_marks >= 3 and alpha_tokens <= 14 and has_formula_structure(text)
 
 
 def is_math_font(font_name: str) -> bool:
@@ -829,6 +2320,103 @@ def split_text(text: str, max_words: int) -> list[str]:
     return final
 
 
+def order_page_cards_for_reader(
+    cards: list[Card],
+    *,
+    page_number: int,
+    page_width: float,
+) -> list[Card]:
+    """Insert pre-extracted visuals into the already ordered text stream for a page."""
+
+    movable_visuals = [
+        card
+        for card in cards
+        if card.page == page_number and card.kind in {"table", "figure"} and card.image_id
+    ]
+    if not movable_visuals:
+        return cards
+
+    text_stream = [card for card in cards if card not in movable_visuals]
+    if not text_stream:
+        return cards
+
+    visual_set = set(id(card) for card in movable_visuals)
+    untouched_prefix = [card for card in cards if card.page != page_number]
+    if untouched_prefix:
+        page_cards = [card for card in cards if card.page == page_number]
+        ordered_page = order_page_cards_for_reader(
+            page_cards,
+            page_number=page_number,
+            page_width=page_width,
+        )
+        return [*untouched_prefix, *ordered_page]
+
+    minimum_anchor = first_page_visual_minimum_anchor(text_stream, page_number)
+    placements: dict[int, list[Card]] = {}
+    for visual in sorted(movable_visuals, key=visual_position_key):
+        anchor = visual_anchor_index(visual, text_stream, page_width)
+        anchor = max(anchor, minimum_anchor)
+        anchor = min(anchor, len(text_stream))
+        placements.setdefault(anchor, []).append(visual)
+
+    ordered: list[Card] = []
+    for index in range(len(text_stream) + 1):
+        ordered.extend(sorted(placements.get(index, []), key=visual_position_key))
+        if index < len(text_stream):
+            ordered.append(text_stream[index])
+
+    # Preserve any unexpected duplicate object that was not handled above.
+    handled = {id(card) for card in ordered}
+    return [*ordered, *[card for card in cards if id(card) not in handled and id(card) not in visual_set]]
+
+
+def first_page_visual_minimum_anchor(text_stream: list[Card], page_number: int) -> int:
+    if page_number != 1:
+        return 0
+    for index, card in enumerate(text_stream):
+        if card.kind == "heading" and normalized_key(card.text) == "abstract":
+            for following_index in range(index + 1, len(text_stream)):
+                if text_stream[following_index].kind == "paragraph":
+                    return following_index + 1
+            return index + 1
+    return 1 if text_stream else 0
+
+
+def visual_anchor_index(visual: Card, text_stream: list[Card], page_width: float) -> int:
+    if visual.bbox is None:
+        return len(text_stream)
+    anchor = 0
+    for index, card in enumerate(text_stream):
+        if card.bbox is None:
+            continue
+        if card_precedes_visual(card, visual, page_width):
+            anchor = index + 1
+    return anchor
+
+
+def card_precedes_visual(card: Card, visual: Card, page_width: float) -> bool:
+    if card.bbox is None or visual.bbox is None:
+        return False
+    card_top = card.bbox[1]
+    visual_top = visual.bbox[1]
+    card_bottom = card.bbox[3]
+    if card_bottom <= visual_top + 3.0:
+        return True
+    card_side = segment_column_side(card.bbox, page_width)
+    visual_side = segment_column_side(visual.bbox, page_width)
+    if "full" in {card_side, visual_side}:
+        return card_top <= visual_top
+    if card_side == visual_side:
+        return card_top <= visual_top
+    return False
+
+
+def visual_position_key(card: Card) -> tuple[float, float, str]:
+    if card.bbox is None:
+        return (float("inf"), float("inf"), card.id)
+    return (card.bbox[1], card.bbox[0], card.id)
+
+
 def smooth_reader_cards(cards: list[Card], max_words_per_card: int) -> list[Card]:
     """Apply a conservative reader-oriented cleanup pass to paragraph cards."""
     smoothed: list[Card] = []
@@ -848,6 +2436,7 @@ def smooth_reader_cards(cards: list[Card], max_words_per_card: int) -> list[Card
             image_id=card.image_id,
             source_image_id=card.source_image_id,
             bbox=card.bbox,
+            items=card.items,
         )
         if (
             candidate.kind == "paragraph"
@@ -870,6 +2459,7 @@ def smooth_reader_cards(cards: list[Card], max_words_per_card: int) -> list[Card
                 image_id=card.image_id,
                 source_image_id=card.source_image_id,
                 bbox=card.bbox,
+                items=card.items,
             )
         )
     return result
@@ -962,9 +2552,24 @@ def looks_like_reader_noise(text: str) -> bool:
         return True
     if looks_like_visual_label_noise(cleaned):
         return True
+    if looks_like_encoded_gibberish(cleaned):
+        return True
     if re.fullmatch(r"[\W_]+", cleaned):
         return True
     return False
+
+
+def looks_like_encoded_gibberish(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if len(cleaned) < 24:
+        return False
+    alpha = [char for char in cleaned if char.isalpha()]
+    if len(alpha) < 12:
+        return False
+    lowercase_ratio = sum(char.islower() for char in alpha) / max(1, len(alpha))
+    symbol_ratio = len(re.findall(r"[][&<>/\\^_`|~]", cleaned)) / max(1, len(cleaned))
+    long_upperish = bool(re.search(r"\b[A-Z0-9&\]\[<>/]{8,}\b", cleaned))
+    return lowercase_ratio < 0.18 and symbol_ratio > 0.06 and long_upperish
 
 
 def is_list_or_bullet_start(text: str) -> bool:
@@ -1071,9 +2676,22 @@ def looks_like_heading(text: str) -> bool:
         return True
     if re.match(rf"^\d+(?:\.\d+)*\.?\s+(?:{canonical_heading})\b", text, re.IGNORECASE):
         return True
+    if looks_like_numbered_section_heading(text):
+        return True
     if re.match(r"^[A-Z]\s+(?:[A-Z][A-Za-z]+(?:\s+|$)){1,6}$", text):
         return True
     return False
+
+
+def looks_like_numbered_section_heading(text: str) -> bool:
+    cleaned = normalize_text(text)
+    return bool(
+        re.fullmatch(
+            r"\d+(?:\.\d+)+\.?\s+"
+            r"[A-Z][A-Za-z/&-]*(?:\s+[A-Z][A-Za-z/&-]*){0,5}",
+            cleaned,
+        )
+    )
 
 
 def looks_like_visual_label_noise(text: str) -> bool:
@@ -1116,8 +2734,12 @@ def extract_words(plumber_page: pdfplumber.page.Page) -> list[dict[str, Any]]:
 
 def find_caption_lines(words: list[dict[str, Any]], prefix: str) -> list[dict[str, Any]]:
     lines = group_words_into_lines(words)
-    pattern = re.compile(rf"^{re.escape(prefix)}\s*\d+[\.:]", re.IGNORECASE)
-    return [line for line in lines if pattern.match(line["text"])]
+    caption_lines: list[dict[str, Any]] = []
+    for line in lines:
+        caption = slice_caption_from_segment(line, prefix, allow_embedded=prefix.lower() == "figure")
+        if caption is not None:
+            caption_lines.append(caption)
+    return caption_lines
 
 
 def find_caption_lines_for_page(
@@ -1139,16 +2761,71 @@ def find_caption_lines_from_segments(
     segments: list[dict[str, Any]],
     prefix: str,
 ) -> list[dict[str, Any]]:
-    pattern = re.compile(rf"^{re.escape(prefix)}\s*\d+[\.:]", re.IGNORECASE)
     caption_lines: list[dict[str, Any]] = []
     for segment in segments:
-        text = repair_caption_prefix_spacing(str(segment.get("text", "")), prefix)
-        if not pattern.match(text):
-            continue
-        caption = dict(segment)
-        caption["text"] = text
-        caption_lines.append(caption)
+        caption = slice_caption_from_segment(
+            segment,
+            prefix,
+            allow_embedded=prefix.lower() == "figure",
+        )
+        if caption is not None:
+            caption_lines.append(caption)
     return caption_lines
+
+
+def slice_caption_from_segment(
+    segment: dict[str, Any],
+    prefix: str,
+    *,
+    allow_embedded: bool = False,
+) -> dict[str, Any] | None:
+    text = repair_caption_prefix_spacing(str(segment.get("text", "")), prefix)
+    anchor = r"\b" if allow_embedded else r"^"
+    pattern = re.compile(rf"{anchor}{re.escape(prefix)}\s*\d+[\.:]", re.IGNORECASE)
+    match = pattern.search(text)
+    if match is None:
+        return None
+    caption = dict(segment)
+    caption["text"] = normalize_text(text[match.start() :])
+    caption["bbox"] = approximate_text_slice_bbox(segment["bbox"], text, match.start(), len(text))
+    caption["embedded"] = match.start() > 0
+    return caption
+
+
+def approximate_text_slice_bbox(
+    bbox: BBox,
+    text: str,
+    start: int,
+    end: int,
+) -> BBox:
+    if end <= start or not text:
+        return bbox
+    width = bbox[2] - bbox[0]
+    char_count = max(1, len(text))
+    x0 = bbox[0] + width * max(0.0, min(1.0, start / char_count))
+    x1 = bbox[0] + width * max(0.0, min(1.0, end / char_count))
+    return (x0, bbox[1], max(x0 + 1.0, x1), bbox[3])
+
+
+def clip_segment_from_x(segment: dict[str, Any], x0: float) -> dict[str, Any] | None:
+    bbox = tuple(float(value) for value in segment["bbox"])
+    if x0 <= bbox[0] + 1.0:
+        return dict(segment)
+    if x0 >= bbox[2] - 1.0:
+        return None
+    text = normalize_text(str(segment.get("text", "")))
+    if not text:
+        return None
+    ratio = max(0.0, min(1.0, (x0 - bbox[0]) / max(1.0, bbox[2] - bbox[0])))
+    start = min(len(text), max(0, round(len(text) * ratio)))
+    clipped_text = normalize_text(text[start:])
+    clipped_text = re.sub(r"^[A-Za-z]-\s+(?=[a-z]{2,}\.)", "", clipped_text)
+    if not clipped_text:
+        return None
+    clipped = dict(segment)
+    clipped["text"] = clipped_text
+    clipped["bbox"] = approximate_text_slice_bbox(bbox, text, start, len(text))
+    return clipped
 
 
 def repair_caption_prefix_spacing(text: str, prefix: str) -> str:
@@ -1277,12 +2954,72 @@ def trim_bbox_away_from_caption(bbox: BBox, caption_bbox: BBox, minimum_gap: flo
     return bbox
 
 
+def plumber_table_candidate(table: Any) -> TableCandidate:
+    cell_count = 0
+    non_empty_cells = 0
+    try:
+        rows = table.extract() or []
+    except Exception:
+        rows = []
+    for row in rows:
+        for cell in row:
+            cell_count += 1
+            if normalize_text(str(cell or "")):
+                non_empty_cells += 1
+    return TableCandidate(
+        tuple(float(value) for value in table.bbox),
+        source="pdfplumber",
+        cell_count=cell_count,
+        non_empty_cells=non_empty_cells,
+    )
+
+
 def substantial_table_bbox(bbox: BBox, page: pdfplumber.page.Page) -> bool:
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
     page_area = float(page.width * page.height)
     area_ratio = (width * height) / max(1.0, page_area)
     return width >= page.width * 0.38 and height >= 70 and area_ratio >= 0.035
+
+
+def useful_uncaptioned_table_candidate(
+    table: TableCandidate,
+    page: pdfplumber.page.Page,
+    words: list[dict[str, Any]],
+    page_number: int,
+) -> bool:
+    if table.source == "pdfplumber" and table.cell_count:
+        non_empty = table.non_empty_cells or 0
+        if non_empty == 0:
+            return False
+        if non_empty / max(1, table.cell_count) < 0.04:
+            return False
+    if table.source == "gmft" and page_number == 1 and text_dense_prose_region(table.bbox, words):
+        return False
+    return True
+
+
+def text_dense_prose_region(bbox: BBox, words: list[dict[str, Any]]) -> bool:
+    inside = [
+        normalize_text(str(word.get("text", "")))
+        for word in words
+        if word_inside_bbox(word, bbox)
+    ]
+    tokens = [token for token in inside if token]
+    if len(tokens) < 70:
+        return False
+    alpha = sum(1 for token in tokens if re.search(r"[A-Za-z]{3,}", token))
+    numeric = sum(1 for token in tokens if re.fullmatch(r"\d+(?:\.\d+)?%?", token))
+    return alpha / max(1, len(tokens)) >= 0.55 and numeric / max(1, len(tokens)) <= 0.30
+
+
+def word_inside_bbox(word: dict[str, Any], bbox: BBox) -> bool:
+    return (
+        safe_float(word.get("x0")) >= bbox[0]
+        and safe_float(word.get("x1")) <= bbox[2]
+        and safe_float(word.get("top")) >= bbox[1]
+        and safe_float(word.get("bottom")) <= bbox[3]
+    )
 
 
 def heuristic_table_bbox(
@@ -1595,9 +3332,10 @@ def local_caption_for_visual(
         lines = split_words_into_horizontal_segments(candidate_words)
     caption_pattern = re.compile(rf"^{re.escape(prefix)}\s*\d+[\.:]", re.IGNORECASE)
     starts = [
-        (index, line)
+        (index, caption)
         for index, line in enumerate(lines)
-        if caption_pattern.match(repair_caption_prefix_spacing(line["text"], prefix))
+        if (caption := slice_caption_from_segment(line, prefix, allow_embedded=True)) is not None
+        and caption_pattern.match(caption["text"])
     ]
     start_index = min(
         starts,
@@ -1612,17 +3350,32 @@ def local_caption_for_visual(
     previous_bottom = 0.0
     previous_bbox: BBox | None = None
     for line in lines[start_index:]:
+        candidate = (
+            slice_caption_from_segment(line, prefix, allow_embedded=True)
+            if not selected
+            else line
+        )
+        if candidate is None and not selected:
+            continue
+        if selected and previous_bbox is not None:
+            candidate = clip_segment_from_x(line, max(0.0, previous_bbox[0] - 8.0))
+            if candidate is None:
+                break
+        if candidate is None:
+            continue
         if selected and float(line["bbox"][1]) - previous_bottom > 18:
             break
-        if selected and starts_new_caption(line["text"]):
+        if selected and starts_new_caption(candidate["text"]):
             break
-        if previous_bbox is not None and not caption_segment_continues(previous_bbox, line["bbox"]):
-            if vertical_gap(previous_bbox, line["bbox"]) <= 4:
+        if previous_bbox is not None and not caption_segment_continues(previous_bbox, candidate["bbox"]):
+            if vertical_gap(previous_bbox, candidate["bbox"]) <= 4:
                 continue
             break
-        selected.append(line)
-        previous_bottom = float(line["bbox"][3])
-        previous_bbox = line["bbox"]
+        selected.append(candidate)
+        previous_bottom = float(candidate["bbox"][3])
+        previous_bbox = candidate["bbox"]
+        if selected[0].get("embedded") and len(selected) >= 2:
+            break
         if len(selected) >= 6:
             break
 
@@ -1641,7 +3394,7 @@ def split_chars_into_reading_order_segments(
     page_width: float,
     page_height: float,
 ) -> list[dict[str, Any]]:
-    segments = split_chars_into_horizontal_segments(chars)
+    segments = split_chars_into_horizontal_segments(chars, page_width=page_width)
     body_font_size = dominant_body_font_size(segments, page_height)
     for segment in segments:
         segment["kind"] = (
@@ -1673,18 +3426,29 @@ def split_chars_into_reading_order_segments(
     return ordered
 
 
-def split_chars_into_horizontal_segments(chars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def split_chars_into_horizontal_segments(
+    chars: list[dict[str, Any]],
+    page_width: float | None = None,
+) -> list[dict[str, Any]]:
     rows = group_chars_by_baseline(chars)
     segments: list[dict[str, Any]] = []
     for row in rows:
         sorted_row = sorted(row, key=lambda char: safe_float(char.get("x0")))
         gap_limit = horizontal_char_segment_gap(sorted_row)
+        space_threshold = char_space_threshold(sorted_row)
         current: list[dict[str, Any]] = []
         previous_char: dict[str, Any] | None = None
         for char in sorted_row:
             if previous_char is not None:
                 gap = safe_float(char.get("x0")) - safe_float(previous_char.get("x1"))
-                if gap > gap_limit:
+                if should_break_char_segment(
+                    previous_char,
+                    char,
+                    gap=gap,
+                    gap_limit=gap_limit,
+                    space_threshold=space_threshold,
+                    page_width=page_width,
+                ):
                     append_char_segment(segments, current)
                     current = []
             current.append(char)
@@ -1737,7 +3501,8 @@ def valid_text_char(char: dict[str, Any]) -> bool:
 def append_char_segment(segments: list[dict[str, Any]], chars: list[dict[str, Any]]) -> None:
     if not chars:
         return
-    text = reconstruct_char_line(chars)
+    raw_text = reconstruct_raw_char_line(chars)
+    text = normalize_text(raw_text)
     if not text:
         return
     segments.append(
@@ -1750,11 +3515,16 @@ def append_char_segment(segments: list[dict[str, Any]], chars: list[dict[str, An
                 max(safe_float(char["bottom"]) for char in chars),
             ),
             "font_size": median([char_font_size(char) for char in chars]),
+            "repaired_ligatures": has_misdecoded_pdf_ligatures(raw_text),
         }
     )
 
 
 def reconstruct_char_line(chars: list[dict[str, Any]]) -> str:
+    return normalize_text(reconstruct_raw_char_line(chars))
+
+
+def reconstruct_raw_char_line(chars: list[dict[str, Any]]) -> str:
     sorted_chars = sorted(chars, key=lambda char: safe_float(char.get("x0")))
     threshold = char_space_threshold(sorted_chars)
     parts: list[str] = []
@@ -1776,7 +3546,7 @@ def reconstruct_char_line(chars: list[dict[str, Any]]) -> str:
             parts.append(" ")
         parts.append(text)
         previous_text_char = char
-    return normalize_text(repair_leading_marker_spacing("".join(parts)))
+    return repair_leading_marker_spacing("".join(parts))
 
 
 def repair_leading_marker_spacing(text: str) -> str:
@@ -1800,6 +3570,40 @@ def should_insert_char_space(
     if current_text in ".,;:!?)]}”’%" and gap < threshold * 1.9:
         return False
     return True
+
+
+def should_break_char_segment(
+    previous_char: dict[str, Any],
+    current_char: dict[str, Any],
+    *,
+    gap: float,
+    gap_limit: float,
+    space_threshold: float,
+    page_width: float | None,
+) -> bool:
+    if gap > gap_limit:
+        return True
+    if page_width and crosses_column_gutter(previous_char, current_char, page_width):
+        return gap > max(6.0, space_threshold * 3.5)
+    return False
+
+
+def crosses_column_gutter(
+    previous_char: dict[str, Any],
+    current_char: dict[str, Any],
+    page_width: float,
+) -> bool:
+    if page_width <= 0:
+        return False
+    gutter = page_width / 2
+    previous_x1 = safe_float(previous_char.get("x1"))
+    current_x0 = safe_float(current_char.get("x0"))
+    return (
+        previous_x1 <= gutter
+        and current_x0 >= gutter
+        and previous_x1 >= gutter - page_width * 0.08
+        and current_x0 <= gutter + page_width * 0.08
+    )
 
 
 def char_space_threshold(chars: list[dict[str, Any]]) -> float:
@@ -1953,8 +3757,6 @@ def segment_column_side(bbox: BBox, page_width: float) -> str:
     spans_gutter = x0 < gutter - page_width * 0.06 and x1 > gutter + page_width * 0.06
     if width >= page_width * 0.62 or spans_gutter:
         return "full"
-    if abs(center - gutter) <= page_width * 0.07 and width <= page_width * 0.45:
-        return "full"
     if x1 <= gutter + page_width * 0.08 or center < gutter:
         return "left"
     if x0 >= gutter - page_width * 0.08 or center > gutter:
@@ -1988,7 +3790,8 @@ def horizontal_segment_gap(row: list[dict[str, Any]]) -> float:
 def append_word_segment(segments: list[dict[str, Any]], words: list[dict[str, Any]]) -> None:
     if not words:
         return
-    text = normalize_text(" ".join(str(word.get("text", "")) for word in words))
+    raw_text = " ".join(str(word.get("text", "")) for word in words)
+    text = normalize_text(raw_text)
     if not text:
         return
     segments.append(
@@ -2000,6 +3803,7 @@ def append_word_segment(segments: list[dict[str, Any]], words: list[dict[str, An
                 max(float(word["x1"]) for word in words),
                 max(float(word["bottom"]) for word in words),
             ),
+            "repaired_ligatures": has_misdecoded_pdf_ligatures(raw_text),
         }
     )
 
@@ -2190,6 +3994,8 @@ def nearby_graphic_text_bboxes(
     expanded = expand_bbox(visual_bbox, x_padding=18.0, y_padding=34.0)
     text_boxes: list[BBox] = []
     for line in split_words_into_horizontal_segments(words):
+        if not graphic_label_text_candidate(str(line.get("text", ""))):
+            continue
         bbox = tuple(float(value) for value in line["bbox"])
         if not bbox_intersects(bbox, search_band):
             continue
@@ -2212,6 +4018,33 @@ def graphic_text_bbox_candidate(text_bbox: BBox, visual_bbox: BBox) -> bool:
         if extends_left or extends_right:
             return False
     return True
+
+
+def graphic_label_text_candidate(text: str) -> bool:
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return False
+    token_count = len(cleaned.split())
+    if token_count <= 4:
+        return True
+    if re.search(r"[=∈≤≥→←↦√∑∏⊤×]", cleaned):
+        return True
+    return False
+
+
+def embedded_caption_visual_candidate(
+    bbox: BBox,
+    caption_region: BBox,
+    page_rect: PageRect,
+) -> bool:
+    width = bbox[2] - bbox[0]
+    if width > float(page_rect.width) * 0.36:
+        return False
+    caption_center = bbox_center(caption_region)[0]
+    box_center = bbox_center(bbox)[0]
+    if abs(box_center - caption_center) > max(90.0, (caption_region[2] - caption_region[0]) * 1.2):
+        return False
+    return bbox[0] >= caption_region[0] - 95.0 and bbox[2] <= caption_region[2] + 125.0
 
 
 def bbox_intersects(first: BBox, second: BBox) -> bool:
@@ -2263,9 +4096,53 @@ def point_in_bbox(point: tuple[float, float], bbox: BBox) -> bool:
 
 
 def region_contains_text_block(text_bbox: BBox, region_bbox: BBox) -> bool:
-    if point_in_bbox(bbox_center(text_bbox), region_bbox):
+    if horizontal_overlap_ratio(text_bbox, region_bbox) < 0.45:
+        return False
+    text_center = bbox_center(text_bbox)
+    if point_in_bbox(text_center, region_bbox):
         return True
+    text_width = text_bbox[2] - text_bbox[0]
+    region_width = region_bbox[2] - region_bbox[0]
+    if region_width < text_width * 0.56:
+        return False
     return overlap_ratio(text_bbox, region_bbox) > 0.22
+
+
+def clip_line_left_of_suppressed_region(
+    line: dict[str, Any],
+    region_bbox: BBox,
+) -> dict[str, Any] | None:
+    bbox = tuple(float(value) for value in line["bbox"])
+    vertical_overlap = max(0.0, min(bbox[3], region_bbox[3]) - max(bbox[1], region_bbox[1]))
+    if vertical_overlap <= 0:
+        return line
+    text_width = bbox[2] - bbox[0]
+    region_width = region_bbox[2] - region_bbox[0]
+    if region_width <= 0 or text_width <= 0:
+        return line
+    if region_width > text_width * 0.62:
+        return line
+    if not (bbox[0] < region_bbox[0] < bbox[2]):
+        return line
+    if bbox[2] - region_bbox[0] < max(8.0, text_width * 0.05):
+        return line
+    if region_bbox[2] < bbox[2] - text_width * 0.18:
+        return line
+    text = normalize_text(str(line.get("text", "")))
+    if not text:
+        return None
+    end = round(len(text) * ((region_bbox[0] - bbox[0]) / text_width)) + 3
+    caption_match = re.search(r"\b(?:Figure|Table)\s*\d+[\.:]", text, re.IGNORECASE)
+    if caption_match is not None and caption_match.start() <= end + 8:
+        end = caption_match.start()
+    end = max(0, min(len(text), end))
+    clipped_text = normalize_text(text[:end])
+    if len(clipped_text) < 2:
+        return None
+    clipped = dict(line)
+    clipped["text"] = clipped_text
+    clipped["bbox"] = approximate_text_slice_bbox(bbox, text, 0, end)
+    return clipped
 
 
 def overlap_ratio(first: BBox, second: BBox) -> float:

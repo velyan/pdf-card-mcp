@@ -2,10 +2,11 @@
 
 <!-- mcp-name: io.github.velyan/pdf-card-mcp -->
 
-PDF Card MCP is a local-first MCP tool that converts dense PDFs into soft, minimal,
-card-based HTML readers. It preserves source text, renders source pages, crops detected
-tables, figures, and display formulas as images, and writes a standalone HTML file that
-can be moved across devices without losing assets.
+PDF Card MCP is a local-first MCP tool that converts dense PDFs into minimal,
+card-based HTML readers inspired by the source document. It preserves source text, renders
+source pages, crops detected tables, figures, and display formulas as images, derives a
+safe reader style from the original PDF palette, and writes a standalone HTML file that can
+be moved across devices without losing assets.
 
 The default reader is designed for comfortable reading: large type, small cards, search,
 section navigation, next/previous controls, keyboard navigation, a font-size slider, and
@@ -69,6 +70,10 @@ Inputs:
 - `ocr`: optional OCR fallback if `pytesseract` is installed.
 - `max_pages`: optional processing limit.
 - `theme`: defaults to `soft`.
+- `style_engine`: `fixed`, `pdf`, or `sampling`; defaults to `pdf`. `fixed` preserves the
+  original soft palette, `pdf` derives bounded colors and typography hints locally from the
+  source PDF, and `sampling` asks the host LLM to choose validated style tokens from those
+  local hints.
 - `table_engine`: `auto`, `pdfplumber`, or `gmft`; `auto` uses `gmft` when installed.
 - `text_engine`: `char_geometry` or `pdfplumber_words`; defaults to `char_geometry` so
   missing spaces are repaired from PDF character positions instead of trusting fused words.
@@ -79,9 +84,12 @@ Inputs:
 - `model_cache_dir`: optional cache directory for local ML table model weights.
 - `offline`: use only already-cached optional ML models.
 
-Sampling post-processing is intentionally narrow. The host LLM may suggest merges, heading
-extraction, or front-matter/footnote classification, but Python validation rejects any operation
-that rewrites, deletes, invents, or reorders source text.
+Sampling post-processing is intentionally narrow. For card boundaries, the host LLM may
+suggest merges, heading extraction, or front-matter/footnote classification, but Python
+validation rejects any operation that rewrites, deletes, invents, or reorders source text.
+For `style_engine=sampling`, the host LLM may only choose bounded style tokens and palette
+candidate IDs; it cannot return raw CSS, JavaScript, or arbitrary colors. If sampling is
+unavailable, the reader keeps deterministic PDF-derived styling and returns a warning.
 
 Run the server locally:
 

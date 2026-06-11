@@ -26,6 +26,13 @@ class PageRect:
         return self.y1 - self.y0
 
 
+@dataclass(frozen=True, slots=True)
+class PdfTocEntry:
+    title: str
+    level: int
+    page: int | None
+
+
 class PdfiumDocument:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -36,6 +43,33 @@ class PdfiumDocument:
 
     def __getitem__(self, index: int) -> "PdfiumPage":
         return PdfiumPage(self._document[index])
+
+    def toc_entries(self) -> list[PdfTocEntry]:
+        entries: list[PdfTocEntry] = []
+        try:
+            bookmarks = self._document.get_toc()
+        except Exception:
+            return entries
+
+        for bookmark in bookmarks:
+            try:
+                title = str(bookmark.get_title() or "").strip()
+            except Exception:
+                title = ""
+            if not title:
+                continue
+            page: int | None = None
+            try:
+                dest = bookmark.get_dest()
+                page = int(dest.get_index()) + 1
+            except Exception:
+                page = None
+            try:
+                level = int(bookmark.level)
+            except Exception:
+                level = 0
+            entries.append(PdfTocEntry(title=title, level=level, page=page))
+        return entries
 
     def close(self) -> None:
         self._document.close()
@@ -64,6 +98,23 @@ class PdfiumPage:
             clipped[1],
         )
         return self._render_png(scale=scale, crop=crop)
+
+    def extract_text_bounded(self, bbox: BBox, padding: float = 1.5) -> str:
+        clipped = clip_bbox(pad_bbox(bbox, self.rect, padding), self.rect)
+        try:
+            text_page = self._page.get_textpage()
+            return str(
+                text_page.get_text_bounded(
+                    left=clipped[0],
+                    bottom=self.rect.height - clipped[3],
+                    right=clipped[2],
+                    top=self.rect.height - clipped[1],
+                    errors="ignore",
+                )
+                or ""
+            )
+        except Exception:
+            return ""
 
     def visual_bboxes(self) -> list[BBox]:
         bboxes: list[BBox] = []

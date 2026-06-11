@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .html_renderer import render_html
-from .models import BBox, Card, ConversionManifest, ImageAsset
+from .models import BBox, Card, ConversionManifest, ImageAsset, ReaderStyle, StyleHints
 
 TextCardKind = Literal["paragraph", "heading", "footnote", "metadata"]
 
@@ -473,6 +473,9 @@ def manifest_from_payload(payload: dict) -> ConversionManifest:
         assets=[asset_from_payload(asset) for asset in payload.get("assets", [])],
         warnings=list(payload.get("warnings", [])),
         theme=str(payload.get("theme", "soft")),
+        style_engine=str(payload.get("style_engine", "fixed")),
+        style_hints=StyleHints.from_dict(payload.get("style_hints")),
+        style=ReaderStyle.from_dict(payload.get("style")),
     )
 
 

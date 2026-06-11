@@ -10,14 +10,26 @@ from reportlab.pdfgen import canvas
 from pdf_card_mcp.converter import (
     TextBlock,
     convert_pdf_to_card_html,
+    extract_algorithm_blocks,
+    extract_formula_blocks,
     find_caption_lines_from_segments,
+    has_unreadable_pdf_glyphs,
+    is_formula_text_line,
+    looks_like_heading,
+    looks_like_reader_noise,
     merge_text_blocks,
     normalize_block_lines,
+    normalize_pdfium_control_chars,
+    normalize_text,
+    region_contains_text_block,
+    slice_caption_from_segment,
     smooth_reader_cards,
     split_chars_into_reading_order_segments,
     split_words_into_reading_order_segments,
+    strip_orphan_math_prefix,
 )
 from pdf_card_mcp.models import Card
+from pdf_card_mcp.pdf_backend import PageRect
 
 PAGE_WIDTH = 612
 PAGE_HEIGHT = 792
@@ -206,6 +218,72 @@ def make_figure_pdf(path: Path) -> None:
     page.save()
 
 
+def make_visual_abstract_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "Visual Abstract Paper", size=18)
+    draw_text(page, 72, 108, "Ada Example", size=11)
+    draw_text(page, 72, 145, "Abstract", size=13)
+    draw_text(
+        page,
+        72,
+        172,
+        "The abstract should be read before the nearby figure card appears.",
+        size=11,
+    )
+    draw_text(
+        page,
+        72,
+        190,
+        "It explains the paper without being interrupted by a visual.",
+        size=11,
+    )
+    draw_rect(
+        page,
+        (330, 145, 520, 292),
+        stroke=colors.Color(0.25, 0.35, 0.55),
+        fill=colors.Color(0.9, 0.92, 0.98),
+    )
+    draw_text(page, 370, 210, "Plot", size=20)
+    draw_text(page, 330, 316, "Figure 1. A visual summary.", size=10)
+    draw_text(page, 72, 350, "1 Introduction", size=14)
+    draw_text(page, 72, 378, "The introduction follows the abstract and visual summary.", size=11)
+    page.save()
+
+
+def make_wrapped_title_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "LORA: LOW-RANK ADAPTATION OF LARGE LAN-", size=18)
+    draw_text(page, 72, 96, "GUAGE MODELS Edward Hu Yelong Shen", size=12)
+    draw_text(page, 72, 138, "ABSTRACT", size=13)
+    draw_text(page, 72, 166, "The abstract remains readable after the wrapped title.", size=11)
+    page.save()
+
+
+def make_visual_wrapped_title_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "LORA: LOW-RANK ADAPTATION OF LARGE LAN-", size=18)
+    draw_text(page, 72, 96, "GUAGE MODELS", size=18)
+    draw_text(page, 72, 124, "Edward Hu Yelong Shen", size=11)
+    draw_text(page, 72, 160, "ABSTRACT", size=13)
+    draw_text(page, 72, 188, "The abstract remains readable after the wrapped title.", size=11)
+    page.save()
+
+
+def make_masthead_title_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 28, "Published as a conference paper at ICLR 2023", size=9)
+    draw_text(page, 72, 78, "REACT: SYNERGIZING REASONING AND ACTING IN", size=18)
+    draw_text(page, 72, 101, "LANGUAGE MODELS", size=18)
+    draw_text(page, 72, 132, "Shunyu Yao, Jeffrey Zhao, Dian Yu", size=11)
+    draw_text(page, 72, 170, "ABSTRACT", size=13)
+    draw_text(page, 72, 198, "The abstract should be the first substantive reader text.", size=11)
+    page.showPage()
+    draw_text(page, 72, 28, "Published as a conference paper at ICLR 2023", size=9)
+    draw_text(page, 72, 78, "2 METHOD", size=13)
+    draw_text(page, 72, 106, "The second page body should not inherit the repeated masthead.", size=11)
+    page.save()
+
+
 def make_column_figure_pdf(path: Path) -> None:
     page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
     draw_text(page, 72, 72, "Two Column Figure Paper", size=18)
@@ -332,6 +410,144 @@ def make_formula_pdf(path: Path) -> None:
     page.save()
 
 
+def make_multiline_formula_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "Sample Multi-line Formula Paper", size=18)
+    draw_text(page, 72, 120, "The optimizer maximizes the following objective:", size=12)
+    draw_text(
+        page,
+        120,
+        158,
+        "J_GRPO(theta) = E[q ~ P(Q), {o_i}_{i=1}^G ~ pi_old(O|q)]",
+        size=12,
+    )
+    draw_text(
+        page,
+        118,
+        180,
+        "1/G sum_i min(pi_theta(o_i|q)/pi_old(o_i|q) A_i, clip(...)) - beta D_KL(pi||pi_ref), (1)",
+        size=12,
+    )
+    draw_text(
+        page,
+        158,
+        204,
+        "D_KL(pi||pi_ref) = pi_ref(o_i|q)/pi_theta(o_i|q) - log pi_ref(o_i|q)/pi_theta(o_i|q) - 1, (2)",
+        size=12,
+    )
+    draw_text(
+        page,
+        72,
+        246,
+        "where epsilon and beta are hyper-parameters computed using a group of rewards.",
+        size=12,
+    )
+    draw_text(
+        page,
+        188,
+        292,
+        "A_i = (r_i - mean({r_1, r_2, ..., r_G})) / std({r_1, r_2, ..., r_G}). (3)",
+        size=12,
+    )
+    draw_text(page, 72, 340, "The discussion continues after the displayed equations.", size=12)
+    page.save()
+
+
+def make_algorithm_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "Sample Algorithm Paper", size=18)
+    draw_text(page, 72, 120, "The verifier uses the following procedure.", size=12)
+    draw_text(page, 150, 162, "Algorithm 1 Draft verification", size=12)
+    draw_text(page, 150, 184, "Require: draft tokens and target model", size=12)
+    draw_text(page, 150, 206, "1: initialize accepted tokens", size=12)
+    draw_text(page, 150, 228, "2: while token budget remains do", size=12)
+    draw_text(page, 150, 250, "3: return accepted tokens", size=12)
+    draw_text(page, 72, 302, "The prose resumes after the algorithm.", size=12)
+    page.save()
+
+
+def make_footnote_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "Sample Footnote Paper", size=18)
+    draw_text(page, 72, 130, "Main body text should remain in the reader.", size=12)
+    draw_text(
+        page,
+        72,
+        735,
+        "1 Contact author@example.com -> footer text should not become a reader card.",
+        size=8,
+    )
+    draw_text(page, 72, 746, "It remains available on the source page image.", size=8)
+    page.save()
+
+
+def make_contents_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "Contents", size=16)
+    draw_text(
+        page,
+        72,
+        120,
+        "1 Introduction . . . . . . . . . . . . . . . . . . . . . . . 2",
+        size=12,
+    )
+    draw_text(
+        page,
+        90,
+        145,
+        "1.1 Scope . . . . . . . . . . . . . . . . . . . . . . . . . 2",
+        size=12,
+    )
+    draw_text(
+        page,
+        72,
+        170,
+        "2 Details . . . . . . . . . . . . . . . . . . . . . . . . . 3",
+        size=12,
+    )
+
+    page.showPage()
+    page.bookmarkPage("intro")
+    page.addOutlineEntry("Introduction", "intro", level=0)
+    page.bookmarkPage("scope")
+    page.addOutlineEntry("Scope", "scope", level=1)
+    draw_text(page, 72, 72, "1 Introduction", size=18)
+    draw_text(page, 72, 130, "The introduction body should remain readable.", size=12)
+
+    page.showPage()
+    page.bookmarkPage("details")
+    page.addOutlineEntry("Details", "details", level=0)
+    draw_text(page, 72, 72, "2 Details", size=18)
+    draw_text(page, 72, 130, "The details body should remain readable.", size=12)
+    page.save()
+
+
+def make_two_column_text_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    draw_text(page, 72, 72, "Two Column Reading Order Paper", size=18)
+    left_lines = [
+        "Left column starts with alpha context.",
+        "Left column continues the setup.",
+        "Left column adds supporting detail.",
+        "Left column describes the contribution.",
+        "Left column keeps normal flow.",
+        "Left column finishes before the right side.",
+    ]
+    right_lines = [
+        "Right column begins after the left text.",
+        "Right column continues beta context.",
+        "Right column gives supporting evidence.",
+        "Right column stays after the left lines.",
+        "Right column avoids baseline alternation.",
+        "Right column finishes at the page end.",
+    ]
+    for index, (left, right) in enumerate(zip(left_lines, right_lines)):
+        y = 130 + index * 18
+        draw_text(page, 72, y, left, size=9)
+        draw_text(page, 330, y, right, size=9)
+    page.save()
+
+
 def test_converter_embeds_detected_tables_as_images(tmp_path: Path) -> None:
     pdf_path = tmp_path / "sample-table.pdf"
     html_path = tmp_path / "reader.html"
@@ -396,6 +612,74 @@ def test_converter_embeds_captioned_vector_figures_as_images(tmp_path: Path) -> 
     assert "1" not in paragraph_texts
     assert not any(text.startswith("arXiv:") for text in paragraph_texts)
     assert not any(text.startswith("*Equal contribution") for text in paragraph_texts)
+
+
+def test_page_one_visual_does_not_precede_abstract_text(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "visual-abstract.pdf"
+    html_path = tmp_path / "visual-abstract-reader.html"
+    make_visual_abstract_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Visual Abstract")
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    cards = manifest["cards"]
+    figure_index = next(index for index, card in enumerate(cards) if card["kind"] == "figure")
+    abstract_index = next(
+        index
+        for index, card in enumerate(cards)
+        if "The abstract should be read before" in card["text"]
+    )
+
+    assert abstract_index < figure_index
+    assert cards[0]["kind"] != "figure"
+
+
+def test_wrapped_title_continuation_is_removed_from_page_one_byline(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "wrapped-title.pdf"
+    html_path = tmp_path / "wrapped-title-reader.html"
+    make_wrapped_title_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path)
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    all_text = " ".join(card["text"] for card in manifest["cards"])
+
+    assert "GUAGE MODELS" not in all_text
+    assert "Edward Hu Yelong Shen" in all_text
+
+
+def test_visual_title_merges_wrapped_title_lines(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "visual-wrapped-title.pdf"
+    html_path = tmp_path / "visual-wrapped-title-reader.html"
+    make_visual_wrapped_title_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path)
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    all_text = " ".join(card["text"] for card in manifest["cards"])
+
+    assert manifest["title"] == "LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS"
+    assert "LORA: LOW-RANK" not in all_text
+    assert "GUAGE MODELS" not in all_text
+    assert "Edward Hu Yelong Shen" in all_text
+
+
+def test_visual_title_skips_conference_masthead(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "masthead-title.pdf"
+    html_path = tmp_path / "masthead-title-reader.html"
+    make_masthead_title_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path)
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    all_text = " ".join(card["text"] for card in manifest["cards"])
+
+    assert manifest["title"] == "REACT: SYNERGIZING REASONING AND ACTING IN LANGUAGE MODELS"
+    assert "Published as a conference paper" not in all_text
+    assert "REACT: SYNERGIZING" not in all_text
+    assert "LANGUAGE MODELS" not in all_text
+    assert "Shunyu Yao" in all_text
+    assert "second page body" in all_text
 
 
 def test_heuristic_figure_crop_excludes_caption_and_neighboring_column_text(tmp_path: Path) -> None:
@@ -482,6 +766,232 @@ def test_converter_embeds_display_formulas_as_images(tmp_path: Path) -> None:
     assert not any("C_current" in text for text in paragraph_texts)
 
 
+def test_converter_groups_multiline_display_formulas(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "multiline-formula.pdf"
+    html_path = tmp_path / "multiline-formula-reader.html"
+    make_multiline_formula_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Formula Groups")
+
+    assert result.formula_count == 2
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    cards = manifest["cards"]
+    formula_cards = [card for card in cards if card["kind"] == "formula"]
+    assert len(formula_cards) == 2
+    assert formula_cards[0]["bbox"][3] - formula_cards[0]["bbox"][1] > 35
+    assert formula_cards[1]["bbox"][3] - formula_cards[1]["bbox"][1] < 24
+
+    paragraph_text = " ".join(card["text"] for card in cards if card["kind"] == "paragraph")
+    assert "maximizes the following objective" in paragraph_text
+    assert "where epsilon and beta" in paragraph_text
+    assert "discussion continues" in paragraph_text
+    assert "J_GRPO" not in paragraph_text
+    assert "D_KL" not in paragraph_text
+    assert "A_i =" not in paragraph_text
+
+    kinds = [card["kind"] for card in cards]
+    first_formula = kinds.index("formula")
+    second_formula = kinds.index("formula", first_formula + 1)
+    assert first_formula < second_formula
+    assert any(
+        card["kind"] == "paragraph" and "where epsilon and beta" in card["text"]
+        for card in cards[first_formula + 1 : second_formula]
+    )
+
+
+def test_extract_algorithm_blocks_groups_pseudocode_rows() -> None:
+    def segment(text: str, x0: float, top: float, x1: float) -> dict[str, object]:
+        return {"text": text, "bbox": (x0, top, x1, top + 12)}
+
+    blocks = extract_algorithm_blocks(
+        [
+            segment("The procedure follows below.", 72, 120, 280),
+            segment("Algorithm 1 Draft verification", 150, 160, 340),
+            segment("Require: draft tokens and target model", 150, 182, 380),
+            segment("1: initialize accepted tokens", 150, 204, 340),
+            segment("2: while token budget remains do", 150, 226, 370),
+            segment("3: return accepted tokens", 150, 248, 340),
+            segment("The prose resumes here.", 72, 300, 260),
+        ],
+        page_number=1,
+        page_rect=PageRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT),
+    )
+
+    assert len(blocks) == 1
+    assert blocks[0].kind == "formula"
+    assert "Algorithm 1" in blocks[0].text
+    assert "while token budget remains" in blocks[0].text
+    assert "prose resumes" not in blocks[0].text
+
+
+def test_extract_algorithm_blocks_separates_side_by_side_algorithms_from_prose() -> None:
+    def segment(text: str, x0: float, top: float, x1: float) -> dict[str, object]:
+        return {"text": text, "bbox": (x0, top, x1, top + 10)}
+
+    blocks = extract_algorithm_blocks(
+        [
+            segment("Algorithm 1 Autoregressive Decoding", 70, 70, 240),
+            segment("Algorithm 2 Speculative Decoding", 306, 70, 470),
+            segment("Require: Language model q", 70, 88, 170),
+            segment("Require: Target language model q", 306, 88, 430),
+            segment("1: initialize n", 74, 108, 145),
+            segment("length T, drafting strategy DRAFT", 321, 108, 524),
+            segment("2: while n < T do", 74, 118, 145),
+            segment("VERIFY, and correction strategy CORRECT", 321, 118, 480),
+            segment("3:", 74, 128, 82),
+            segment("Set q n+1", 100, 128, 208),
+            segment("1: initialize n", 310, 128, 380),
+            segment("4:", 74, 138, 82),
+            segment("Sample x n+1", 100, 138, 178),
+            segment("2: while n < T do", 310, 138, 381),
+            segment("5:", 74, 148, 82),
+            segment("n <- n + 1", 100, 148, 141),
+            segment("// Drafting: obtain distributions", 335, 148, 469),
+            segment("6: end while", 74, 158, 123),
+            segment("3:", 310, 158, 317),
+            segment("Set p DRAFT(x)", 335, 158, 475),
+            segment("3.2 Pioneering Draft-then-Verify Efforts", 70, 198, 262),
+            segment("5:", 310, 198, 317),
+            segment("Set q(x), i = 1,..., K + 1", 335, 198, 512),
+            segment("To mitigate the above issue, an intuitive way in-", 70, 218, 291),
+            segment("6:", 310, 218, 317),
+            segment("for i = 1 : K do", 335, 218, 397),
+            segment("volves leveraging idle computational resources to", 70, 232, 289),
+            segment("7:", 310, 228, 317),
+            segment("if VERIFY (xi, pi, qi) then", 348, 228, 445),
+            segment("15: end while", 306, 318, 359),
+        ],
+        page_number=3,
+        page_rect=PageRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT),
+    )
+
+    assert len(blocks) == 2
+    assert "Algorithm 1" in blocks[0].text
+    assert "6: end while" in blocks[0].text
+    assert "Pioneering Draft" not in blocks[0].text
+    assert "Algorithm 2" in blocks[1].text
+    assert "for i = 1 : K do" in blocks[1].text
+    assert "volves leveraging idle" not in blocks[1].text
+
+
+def test_extract_algorithm_blocks_handles_unnumbered_algorithm_body() -> None:
+    def segment(text: str, x0: float, top: float, x1: float) -> dict[str, object]:
+        return {"text": text, "bbox": (x0, top, x1, top + 10)}
+
+    blocks = extract_algorithm_blocks(
+        [
+            segment("Algorithm 1 satisfies Equation (1).", 306, 205, 500),
+            segment("Some prose continues in this paragraph.", 306, 220, 520),
+            segment("Algorithm 1 SpeculativeDecodingStep", 55, 374, 212),
+            segment("Inputs: Mp, Mq, prefix.", 65, 388, 169),
+            segment("p q", 109, 392, 132),
+            segment(". Sample guesses x from M autoregressively.", 65, 400, 281),
+            segment("1,..., q", 152, 404, 211),
+            segment("for i = 1 to do", 65, 412, 134),
+            segment("q(x) <- M(prefix + [x])", 75, 424, 233),
+            segment("end for", 65, 448, 96),
+            segment(". Run M in parallel.", 65, 459, 152),
+            segment(". Determine the number of accepted guesses n.", 65, 495, 255),
+            segment("if n < gamma then", 65, 558, 121),
+            segment("Definition 3.2. A neighboring prose column.", 307, 570, 542),
+        ],
+        page_number=3,
+        page_rect=PageRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT),
+    )
+
+    assert len(blocks) == 1
+    assert "Algorithm 1 SpeculativeDecodingStep" in blocks[0].text
+    assert "Algorithm 1 satisfies" not in blocks[0].text
+    assert "Definition 3.2" not in blocks[0].text
+    assert ". Run M in parallel" in blocks[0].text
+
+
+def test_converter_crops_algorithm_without_pseudocode_paragraph_cards(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "algorithm.pdf"
+    html_path = tmp_path / "algorithm-reader.html"
+    make_algorithm_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Algorithm Sample")
+
+    assert result.formula_count >= 1
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    cards = manifest["cards"]
+    formula_cards = [card for card in cards if card["kind"] == "formula"]
+    assert any("Algorithm 1 Draft verification" in card["text"] for card in formula_cards)
+
+    paragraph_text = " ".join(card["text"] for card in cards if card["kind"] == "paragraph")
+    assert "The verifier uses the following procedure" in paragraph_text
+    assert "The prose resumes after the algorithm" in paragraph_text
+    assert "Algorithm 1" not in paragraph_text
+    assert "while token budget remains" not in paragraph_text
+    assert "return accepted tokens" not in paragraph_text
+
+
+def test_numbered_section_heading_is_reader_boundary() -> None:
+    assert looks_like_heading("2.3.2 External Action")
+    assert not looks_like_heading("(3) Updating Agent Code")
+
+    blocks = merge_text_blocks(
+        [
+            TextBlock(
+                page=10,
+                bbox=(72, 320, 286, 340),
+                text="The previous subsection ends with this sentence.",
+            ),
+            TextBlock(page=10, bbox=(72, 395, 220, 414), text="2.3.2 External Action"),
+            TextBlock(
+                page=10,
+                bbox=(72, 430, 286, 452),
+                text="External tools let agents interact with the environment.",
+            ),
+        ]
+    )
+
+    assert [block.text for block in blocks] == [
+        "The previous subsection ends with this sentence.",
+        "2.3.2 External Action",
+        "External tools let agents interact with the environment.",
+    ]
+
+
+def test_formula_detector_rejects_urls_code_and_table_rows() -> None:
+    def segment(text: str, x0: float, top: float, x1: float) -> dict[str, object]:
+        return {"text": text, "bbox": (x0, top, x1, top + 12)}
+
+    blocks = extract_formula_blocks(
+        [
+            segment("Website: https://llama.meta.com/", 72, 120, 260),
+            segment("8https://github.com/openai/evals", 72, 150, 250),
+            segment("6 def f(ctx: str, last_jobs: List[Job]) -> List[Job]:", 72, 180, 350),
+            segment(
+                "General MMLU-Pro (0-shot, CoT) 48.3 - 36.9 66.4 56.3 49.2 73.3",
+                72,
+                210,
+                430,
+            ),
+            segment("job_manifest = JobManifest(", 72, 230, 260),
+            segment('race = input("Enter your race (white/black/asian/latino): ")', 72, 240, 420),
+            segment("<MODEL EXPLANATION (t=0.3, n=1) SAMPLED HERE>", 72, 260, 430),
+            segment(r"\dbname=postgres sslmode=disable", 72, 270, 300),
+            segment("The next row is the only displayed equation.", 72, 250, 340),
+            segment("Var(mu_hat) = Var(s)/n = (Var(x) + E[sigma^2])/n", 150, 292, 462),
+            segment("The prose resumes below the equation.", 72, 340, 320),
+        ],
+        page_number=1,
+        page_rect=PageRect(0, 0, PAGE_WIDTH, PAGE_HEIGHT),
+    )
+
+    assert len(blocks) == 1
+    assert blocks[0].kind == "formula"
+    assert "Var(mu_hat)" in blocks[0].text
+    assert "https://llama.meta.com" not in blocks[0].text
+    assert "github.com/openai/evals" not in blocks[0].text
+    assert "def f(ctx" not in blocks[0].text
+    assert "General MMLU-Pro" not in blocks[0].text
+    assert "job_manifest" not in blocks[0].text
+    assert "MODEL EXPLANATION" not in blocks[0].text
+
+
 def test_converter_reports_missing_pdf(tmp_path: Path) -> None:
     missing = tmp_path / "missing.pdf"
     try:
@@ -501,6 +1011,66 @@ def test_converter_warns_when_no_readable_cards_are_produced(tmp_path: Path) -> 
     assert result.card_count == 0
     assert any("No readable cards" in warning for warning in result.warnings)
     assert any("ocr=true" in warning for warning in result.warnings)
+
+
+def test_converter_skips_footnote_cards_but_keeps_source_page(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "footnote.pdf"
+    html_path = tmp_path / "footnote-reader.html"
+    make_footnote_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Footnote")
+
+    assert result.card_count >= 1
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    card_text = " ".join(card["text"] for card in manifest["cards"])
+    assert "Main body text should remain" in card_text
+    assert "Contact author@example.com" not in card_text
+    assert "source page image" not in card_text
+    assert result.formula_count == 0
+    assert not any(card["kind"] == "footnote" for card in manifest["cards"])
+    assert any(asset["kind"] == "source_page" for asset in manifest["assets"])
+
+
+def test_converter_renders_contents_pages_as_structured_links(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "contents.pdf"
+    html_path = tmp_path / "contents-reader.html"
+    make_contents_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Contents")
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    contents_cards = [card for card in manifest["cards"] if card["kind"] == "contents"]
+    assert len(contents_cards) == 1
+    contents = contents_cards[0]
+    assert contents["section"] == "Contents"
+    assert [item["label"] for item in contents["items"]] == [
+        "1 Introduction",
+        "1.1 Scope",
+        "2 Details",
+    ]
+    assert [item["href"] for item in contents["items"]] == ["#page-2", "#page-2", "#page-3"]
+    assert "Introduction . . ." not in " ".join(
+        card["text"] for card in manifest["cards"] if card["kind"] == "paragraph"
+    )
+
+    html = html_path.read_text(encoding="utf-8")
+    assert '"kind": "contents"' in html
+    assert "toc-list" in html
+    assert "#page-2" in html
+
+
+def test_converter_preserves_two_column_reading_order(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "two-column.pdf"
+    html_path = tmp_path / "two-column-reader.html"
+    make_two_column_text_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Two Columns")
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    text = " ".join(card["text"] for card in manifest["cards"] if card["kind"] == "paragraph")
+    assert text.index("Left column starts") < text.index("Left column finishes")
+    assert text.index("Left column finishes") < text.index("Right column begins")
+    assert text.index("Right column begins") < text.index("Right column finishes")
 
 
 def test_merge_text_blocks_repairs_cross_column_continuations() -> None:
@@ -549,6 +1119,83 @@ def test_char_geometry_recovers_spaces_from_character_gaps() -> None:
         "depends only on the current state"
     )
     assert "AsystemisMarkovian" not in segments[0]["text"]
+
+
+def test_char_geometry_repairs_misdecoded_pdf_ligature_glyphs() -> None:
+    chars = make_unspaced_chars(
+        'Arti!cial intelligence is insu"cient without e#ective work$ows and brie$y aligned o%ine support.',
+        top=140,
+        size=10,
+    )
+
+    segments = split_chars_into_reading_order_segments(
+        chars,
+        page_width=PAGE_WIDTH,
+        page_height=PAGE_HEIGHT,
+    )
+
+    assert segments[0]["text"] == (
+        "Artificial intelligence is insufficient without effective workflows and "
+        "briefly aligned offline support."
+    )
+
+
+def test_normalize_text_keeps_ordinary_punctuation_around_spaces() -> None:
+    assert normalize_text('Hello! This keeps C# code, "$5", and 100% intact.') == (
+        'Hello! This keeps C# code, "$5", and 100% intact.'
+    )
+
+
+def test_normalize_text_does_not_repair_legitimate_inline_punctuation() -> None:
+    text = 'Keep Hello!World, A#B, n%m, A$B, and foo"bar unchanged.'
+    assert normalize_text(text) == text
+
+
+def test_unreadable_pdf_glyph_detection_and_pdfium_control_cleanup() -> None:
+    assert has_unreadable_pdf_glyphs("(cid:80) exp(v)")
+    assert has_unreadable_pdf_glyphs("bad\x10text")
+    assert not has_unreadable_pdf_glyphs("ordinary readable text")
+    assert normalize_text("softmax (cid:80) exp(v)") == "softmax ∑ exp(v)"
+    assert normalize_text("(cid:2)Back(cid:3)") == "[Back]"
+    assert normalize_text("(cid:0) C⊤E (cid:1)") == "( C⊤E )"
+    assert normalize_text("g = (cid:40) RBOX") == "g = { RBOX"
+    assert normalize_text("| {(cid:122) }") == "| {z }"
+    assert normalize_pdfium_control_chars("geome\x02try \x02Back\x03") == "geometry [Back]"
+    assert strip_orphan_math_prefix("(cid:33) In the special case") == "In the special case"
+
+
+def test_formula_detection_does_not_promote_author_byline() -> None:
+    assert not is_formula_text_line(
+        (170.0, 140.0, 440.0, 160.0),
+        PageRect(0.0, 0.0, PAGE_WIDTH, PAGE_HEIGHT),
+        "Yaniv Leviathan * 1 Matan Kalman * 1 Yossi Matias 1",
+    )
+
+
+def test_reader_noise_drops_encoded_gibberish() -> None:
+    assert looks_like_reader_noise("2EV] &RXOGQRWILQG]&LUTXHGX]6ROHLOVKRZ]0\\VWHUH LLO> LGOLO")
+
+
+def test_normalize_text_repairs_fused_leading_fi_word() -> None:
+    assert normalize_text("There are!ve distinct eras.") == "There are five distinct eras."
+
+
+def test_normalize_text_repairs_contextual_ligature_punctuation() -> None:
+    assert normalize_text("user pro!le trade-o!s o!set cuto!s communication e”ciency") == (
+        "user profile trade-offs offset cutoffs communication efficiency"
+    )
+
+
+def test_char_geometry_does_not_turn_sentence_punctuation_into_ligature() -> None:
+    chars = make_unspaced_chars("Hello!World remains readable.", top=140, size=10)
+
+    segments = split_chars_into_reading_order_segments(
+        chars,
+        page_width=PAGE_WIDTH,
+        page_height=PAGE_HEIGHT,
+    )
+
+    assert segments[0]["text"] == "Hello!World remains readable."
 
 
 def test_char_geometry_marks_bottom_small_type_as_footnote() -> None:
@@ -603,12 +1250,38 @@ def test_char_geometry_splits_close_two_column_rows_and_repairs_captions() -> No
     assert captions[0]["text"] == "Figure 3. In MemGPT, a fixed context LLM processor"
 
 
+def test_embedded_caption_segment_is_sliced_from_midline() -> None:
+    caption = slice_caption_from_segment(
+        {
+            "text": "body prose continues here Figure 1: Our reparametrization",
+            "bbox": (108.0, 637.8, 504.0, 651.0),
+        },
+        "Figure",
+        allow_embedded=True,
+    )
+
+    assert caption is not None
+    assert caption["text"] == "Figure 1: Our reparametrization"
+    assert caption["bbox"][0] > 250
+
+    assert (
+        slice_caption_from_segment(
+            {
+                "text": "The result is discussed in Table 5.",
+                "bbox": (108.0, 637.8, 504.0, 651.0),
+            },
+            "Table",
+        )
+        is None
+    )
+
+
 def test_wrapped_hyphenation_keeps_real_short_hyphen_terms() -> None:
     assert normalize_block_lines(["The observa-", "tions work."]) == "The observations work."
     assert normalize_block_lines(["The off-", "line stage."]) == "The off-line stage."
 
 
-def test_action_change_regression_repairs_fused_words_and_separates_footnote(
+def test_action_change_regression_repairs_fused_words_and_skips_footnote(
     tmp_path: Path,
 ) -> None:
     if not ACTION_CHANGE_PDF.exists():
@@ -626,14 +1299,8 @@ def test_action_change_regression_repairs_fused_words_and_separates_footnote(
     all_text = " ".join(card["text"] for card in manifest["cards"])
     assert "AsystemisMarkovian" not in all_text
     assert "actionandchangewasmade" not in all_text
-    assert (
-        "A system is Markovian if the transition of the system to any given state "
-        "depends only on the current state"
-    ) in all_text
-    assert any(
-        card["kind"] == "footnote" and "2 A system is Markovian" in card["text"]
-        for card in manifest["cards"]
-    )
+    assert "2 A system is Markovian" not in all_text
+    assert not any(card["kind"] == "footnote" for card in manifest["cards"])
 
 
 def test_source_and_tests_do_not_import_pymupdf() -> None:
@@ -693,6 +1360,15 @@ def test_reader_smoothing_merges_fragment_cards_and_drops_visual_noise() -> None
         "The model connects external tools to language models."
     ]
     assert smoothed[0].id == "card-1"
+
+
+def test_region_suppression_requires_meaningful_horizontal_overlap() -> None:
+    left_column_text = (50.0, 210.0, 285.0, 224.0)
+    right_column_visual = (202.0, 180.0, 545.0, 376.0)
+    figure_label = (330.0, 210.0, 510.0, 230.0)
+
+    assert not region_contains_text_block(left_column_text, right_column_visual)
+    assert region_contains_text_block(figure_label, right_column_visual)
 
 
 def test_reading_order_segments_prefer_column_order_over_row_interleave() -> None:

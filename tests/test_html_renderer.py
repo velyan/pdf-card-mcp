@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pdf_card_mcp.html_renderer import render_html
-from pdf_card_mcp.models import Card, ConversionManifest, ImageAsset
+from pdf_card_mcp.models import Card, ConversionManifest, ImageAsset, ReaderStyle, soft_reader_style
 
 
 def test_renderer_outputs_standalone_data_uri() -> None:
@@ -59,3 +59,58 @@ def test_renderer_outputs_standalone_data_uri() -> None:
     assert "pdf-card-reader-font-size" in html
     assert "totalFormulas" in html
     assert "width: fit-content" in html
+
+
+def test_renderer_uses_manifest_style_variables() -> None:
+    style = ReaderStyle(
+        **{
+            **soft_reader_style().to_dict(),
+            "bg": "#eef5fb",
+            "paper": "#ffffff",
+            "paper_soft": "#eef3f8",
+            "accent": "#1f5f8f",
+            "accent_soft": "#e2eef6",
+        }
+    )
+    manifest = ConversionManifest(
+        title="Styled Reader",
+        source_pdf=Path("paper.pdf"),
+        page_count=1,
+        processed_pages=1,
+        cards=[Card(id="card-1", kind="paragraph", page=1, section="Document", text="Body")],
+        assets=[],
+        style_engine="pdf",
+        style=style,
+    )
+
+    html = render_html(manifest)
+
+    assert "--accent: #1f5f8f;" in html
+    assert "--bg: #eef5fb;" in html
+    assert '"style_engine": "pdf"' in html
+    assert '"accent": "#1f5f8f"' in html
+
+
+def test_renderer_falls_back_for_unsafe_style() -> None:
+    unsafe = ReaderStyle(
+        **{
+            **soft_reader_style().to_dict(),
+            "paper": "#ffffff",
+            "ink": "#ffffff",
+            "accent": "not-a-color",
+        }
+    )
+    manifest = ConversionManifest(
+        title="Unsafe Styled Reader",
+        source_pdf=Path("paper.pdf"),
+        page_count=1,
+        processed_pages=1,
+        cards=[Card(id="card-1", kind="paragraph", page=1, section="Document", text="Body")],
+        assets=[],
+        style=unsafe,
+    )
+
+    html = render_html(manifest)
+
+    assert "--accent: #6f836e;" in html
+    assert "--ink: #282522;" in html

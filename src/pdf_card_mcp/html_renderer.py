@@ -4,12 +4,15 @@ import html
 import json
 
 from .models import ConversionManifest
+from .style import reader_style_css_variables
 
 
 def render_html(manifest: ConversionManifest) -> str:
     payload = manifest.to_dict(include_data=True)
     payload_json = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
     title = html.escape(manifest.title)
+    style_vars = reader_style_css_variables(manifest.style)
+    style_css = "\n".join(f"  {name}: {value};" for name, value in style_vars.items())
 
     return f"""<!doctype html>
 <html lang="en">
@@ -20,20 +23,7 @@ def render_html(manifest: ConversionManifest) -> str:
 <style>
 :root {{
   color-scheme: light;
-  --bg: #f5f2eb;
-  --paper: #fffdf8;
-  --paper-soft: #f7f2e9;
-  --ink: #282522;
-  --muted: #746f67;
-  --line: #d9d1c7;
-  --accent: #6f836e;
-  --accent-soft: #e7eee3;
-  --plum: #766374;
-  --plum-soft: #eee8ec;
-  --clay: #a98677;
-  --clay-soft: #f0e4de;
-  --gold: #a9834d;
-  --shadow: 0 12px 30px rgba(59, 51, 43, 0.09);
+{style_css}
   --reader-font-size: 22px;
 }}
 * {{ box-sizing: border-box; }}
@@ -42,10 +32,10 @@ body {{
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.82), rgba(245, 242, 235, 0.96)),
+    linear-gradient(180deg, rgb(var(--paper-rgb) / 0.82), rgb(var(--bg-rgb) / 0.96)),
     var(--bg);
   color: var(--ink);
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
 }}
 button, input {{ font: inherit; }}
 button {{
@@ -58,7 +48,7 @@ button {{
 }}
 button:hover, button:focus-visible, input:focus-visible {{
   border-color: var(--accent);
-  outline: 3px solid rgba(111, 131, 110, 0.18);
+  outline: 3px solid rgb(var(--accent-rgb) / 0.18);
   outline-offset: 1px;
 }}
 .shell {{
@@ -73,12 +63,12 @@ button:hover, button:focus-visible, input:focus-visible {{
   overflow: auto;
   padding: 22px 18px;
   border-right: 1px solid var(--line);
-  background: rgba(255, 253, 249, 0.78);
+  background: rgb(var(--paper-rgb) / 0.78);
   backdrop-filter: blur(14px);
 }}
 .brand h1 {{
   margin: 0;
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-family: var(--font-heading);
   font-size: 25px;
   line-height: 1.12;
   letter-spacing: 0;
@@ -108,9 +98,9 @@ button:hover, button:focus-visible, input:focus-visible {{
 .font-control {{
   margin: 14px 0;
   padding: 12px;
-  border: 1px solid rgba(217, 209, 199, 0.78);
-  border-radius: 8px;
-  background: rgba(255, 253, 248, 0.62);
+  border: 1px solid rgb(var(--line-rgb) / 0.78);
+  border-radius: var(--radius);
+  background: rgb(var(--paper-rgb) / 0.62);
 }}
 .font-row {{
   display: flex;
@@ -123,7 +113,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   font-weight: 650;
 }}
 .font-row output {{
-  color: #475f47;
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
 }}
 .font-control input[type="range"] {{
@@ -134,7 +124,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: #ebe2dd;
+  background: var(--meter-bg);
 }}
 .meter span {{
   display: block;
@@ -156,12 +146,12 @@ button:hover, button:focus-visible, input:focus-visible {{
   width: 100%;
   padding: 9px 10px;
   text-align: left;
-  background: rgba(255, 253, 249, 0.78);
+  background: rgb(var(--paper-rgb) / 0.78);
 }}
 .sections button.active {{
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: #415640;
+  color: var(--accent);
 }}
 .content {{
   min-width: 0;
@@ -176,7 +166,7 @@ button:hover, button:focus-visible, input:focus-visible {{
 .masthead h2 {{
   margin: 0;
   max-width: 950px;
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-family: var(--font-heading);
   font-size: clamp(31px, 5vw, 58px);
   line-height: 1.04;
   letter-spacing: 0;
@@ -189,33 +179,34 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .cards {{
   display: grid;
-  gap: 16px;
+  gap: var(--card-gap);
   max-width: 1050px;
   margin: 0 auto;
 }}
 .card {{
   position: relative;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 253, 249, 0.94);
-  box-shadow: 0 8px 22px rgba(59, 51, 43, 0.055);
+  border-radius: var(--radius);
+  background: rgb(var(--paper-rgb) / 0.94);
+  box-shadow: 0 8px 22px rgb(var(--ink-rgb) / 0.055);
   overflow: hidden;
   transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }}
 .card:hover {{
-  border-color: rgba(111, 131, 110, 0.44);
-  box-shadow: 0 12px 28px rgba(59, 51, 43, 0.08);
+  border-color: rgb(var(--accent-rgb) / 0.44);
+  box-shadow: 0 12px 28px rgb(var(--ink-rgb) / 0.08);
 }}
-.card.table {{ border-color: rgba(118, 99, 116, 0.45); }}
-.card.figure {{ border-color: rgba(111, 131, 110, 0.54); }}
-.card.formula {{ border-color: rgba(169, 131, 77, 0.42); }}
+.card.table {{ border-color: rgb(var(--plum-rgb) / 0.45); }}
+.card.figure {{ border-color: rgb(var(--accent-rgb) / 0.54); }}
+.card.formula {{ border-color: rgb(var(--gold-rgb) / 0.42); }}
+.card.contents {{ border-color: rgb(var(--accent-rgb) / 0.38); }}
 .card.footnote {{
-  border-color: rgba(111, 131, 110, 0.28);
-  background: rgba(247, 242, 233, 0.82);
+  border-color: rgb(var(--accent-rgb) / 0.28);
+  background: rgb(var(--paper-soft-rgb) / 0.82);
 }}
 .card.metadata {{
-  border-color: rgba(217, 209, 199, 0.72);
-  background: rgba(247, 242, 233, 0.62);
+  border-color: rgb(var(--line-rgb) / 0.72);
+  background: rgb(var(--paper-soft-rgb) / 0.62);
   box-shadow: none;
 }}
 .card.heading {{
@@ -241,10 +232,10 @@ button:hover, button:focus-visible, input:focus-visible {{
   align-items: center;
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid rgba(118, 99, 116, 0.24);
+  border: 1px solid rgb(var(--plum-rgb) / 0.24);
   border-radius: 999px;
   background: var(--plum-soft);
-  color: #675463;
+  color: var(--plum);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -257,7 +248,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   padding: 0 9px;
   border-radius: 999px;
   background: var(--accent-soft);
-  color: #475f47;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 650;
 }}
@@ -266,21 +257,21 @@ button:hover, button:focus-visible, input:focus-visible {{
   padding-bottom: 0;
 }}
 .card-body {{
-  padding: 12px 22px 22px;
+  padding: var(--card-body-padding);
 }}
 .card.heading .card-body {{
   padding: 18px 0 2px;
 }}
 .card.heading h3 {{
   margin: 0;
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-family: var(--font-heading);
   font-size: clamp(27px, 4vw, 42px);
   line-height: 1.08;
   letter-spacing: 0;
 }}
 .text {{
   margin: 0;
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-family: var(--font-text);
   font-size: var(--reader-font-size);
   line-height: 1.52;
   letter-spacing: 0;
@@ -299,6 +290,48 @@ button:hover, button:focus-visible, input:focus-visible {{
   font-size: calc(var(--reader-font-size) * 0.78);
   line-height: 1.42;
 }}
+.toc-list {{
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-text);
+  font-size: calc(var(--reader-font-size) * 0.86);
+  line-height: 1.32;
+}}
+.toc-entry {{
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(28px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding-left: calc(var(--toc-level, 0) * 18px);
+}}
+.toc-label {{
+  min-width: 0;
+  color: var(--ink);
+  text-decoration: none;
+}}
+.toc-label:hover,
+.toc-label:focus-visible {{
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}}
+.toc-leader {{
+  min-width: 28px;
+  border-bottom: 2px dotted rgb(var(--muted-rgb) / 0.48);
+  transform: translateY(-0.34em);
+}}
+.toc-page {{
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}}
+.page-anchor {{
+  display: block;
+  height: 0;
+  scroll-margin-top: 28px;
+}}
 .caption {{
   margin: 0 0 12px;
   color: var(--muted);
@@ -311,7 +344,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   margin: 0;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: #fff;
 }}
 .asset-wrap img {{
@@ -333,14 +366,14 @@ button:hover, button:focus-visible, input:focus-visible {{
 .source-link {{
   min-height: 34px;
   padding: 0 11px;
-  border-color: rgba(217, 209, 199, 0.88);
-  background: rgba(255, 253, 248, 0.62);
+  border-color: rgb(var(--line-rgb) / 0.88);
+  background: rgb(var(--paper-rgb) / 0.62);
   color: var(--muted);
   font-size: 13px;
 }}
 .source-link:hover,
 .source-link:focus-visible {{
-  color: #405840;
+  color: var(--accent);
   background: var(--accent-soft);
 }}
 .empty {{
@@ -349,7 +382,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   margin: 40px auto;
   padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--paper);
   color: var(--muted);
   font-size: 18px;
@@ -361,7 +394,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   place-items: center;
   z-index: 20;
   padding: 22px;
-  background: rgba(39, 36, 35, 0.54);
+  background: rgb(var(--ink-rgb) / 0.54);
 }}
 .modal.open {{ display: grid; }}
 .modal-panel {{
@@ -369,10 +402,10 @@ button:hover, button:focus-visible, input:focus-visible {{
   max-height: 92vh;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 1px solid var(--line);
   background: var(--paper);
-  box-shadow: 0 30px 80px rgba(39, 36, 35, 0.32);
+  box-shadow: 0 30px 80px rgb(var(--ink-rgb) / 0.32);
   overflow: hidden;
 }}
 .modal-head {{
@@ -385,7 +418,7 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .modal-body {{
   overflow: auto;
-  background: #efebe7;
+  background: var(--modal-bg);
 }}
 .modal-body img {{
   display: block;
@@ -393,7 +426,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   height: auto;
 }}
 mark {{
-  background: #f7e6a8;
+  background: var(--mark-bg);
   color: inherit;
 }}
 @media (max-width: 820px) {{
@@ -547,10 +580,14 @@ function renderSections() {{
 
 function cardSearchText(card) {{
   const asset = card.image_id ? assetMap.get(card.image_id) : null;
-  return [card.text, card.section, asset?.caption, asset?.alt].filter(Boolean).join(" ").toLowerCase();
+  const itemText = Array.isArray(card.items)
+    ? card.items.map(item => [item.label, item.title, item.page_label].filter(Boolean).join(" ")).join(" ")
+    : "";
+  return [card.text, card.section, itemText, asset?.caption, asset?.alt].filter(Boolean).join(" ").toLowerCase();
 }}
 
 function contentLabel(kind) {{
+  if (kind === "contents") return "Contents";
   if (kind === "table") return "Table";
   if (kind === "figure") return "Figure";
   if (kind === "formula") return "Formula";
@@ -567,8 +604,40 @@ function applyFilter() {{
 function renderCards() {{
   cardsEl.innerHTML = "";
   emptyEl.style.display = filtered.length ? "none" : "block";
-  filtered.forEach((card, index) => cardsEl.appendChild(renderCard(card, index)));
+  const anchoredPages = new Set();
+  filtered.forEach((card, index) => {{
+    if (card.page && !anchoredPages.has(card.page)) {{
+      const anchor = document.createElement("span");
+      anchor.id = `page-${{card.page}}`;
+      anchor.className = "page-anchor";
+      cardsEl.appendChild(anchor);
+      anchoredPages.add(card.page);
+    }}
+    cardsEl.appendChild(renderCard(card, index));
+  }});
   updatePosition();
+}}
+
+function safeHref(href) {{
+  if (typeof href !== "string") return "";
+  if (/^#page-[0-9]+$/.test(href)) return href;
+  if (/^(https?:\\/\\/|mailto:)/i.test(href)) return href;
+  return "";
+}}
+
+function renderContents(card) {{
+  const items = Array.isArray(card.items) ? card.items : [];
+  const entries = items.map(item => {{
+    const label = item.label || item.title || "";
+    const page = item.page_label || item.target_page || "";
+    const level = Math.max(0, Math.min(6, Number(item.level || 0)));
+    const href = safeHref(item.href);
+    const labelHtml = href
+      ? `<a class="toc-label" href="${{escapeHtml(href)}}">${{highlighted(label)}}</a>`
+      : `<span class="toc-label">${{highlighted(label)}}</span>`;
+    return `<li class="toc-entry" style="--toc-level: ${{level}}">${{labelHtml}}<span class="toc-leader" aria-hidden="true"></span><span class="toc-page">${{escapeHtml(String(page))}}</span></li>`;
+  }}).join("");
+  return `<ol class="toc-list">${{entries}}</ol>`;
 }}
 
 function renderCard(card, index) {{
@@ -588,7 +657,9 @@ function renderCard(card, index) {{
   }}
 
   let body = "";
-  if (asset) {{
+  if (card.kind === "contents") {{
+    body = renderContents(card);
+  }} else if (asset) {{
     const caption = asset.caption || card.text || asset.alt;
     const captionHtml = card.kind === "formula" ? "" : `<p class="caption">${{highlighted(caption)}}</p>`;
     body = `
@@ -689,7 +760,7 @@ const observer = new IntersectionObserver(entries => {{
 
 renderSections();
 renderCards();
-for (const card of cardsEl.children) observer.observe(card);
+for (const card of cardsEl.querySelectorAll(".card")) observer.observe(card);
 </script>
 </body>
 </html>
