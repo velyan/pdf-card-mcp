@@ -47,14 +47,24 @@ PDF Card MCP releases should be reproducible from a clean checkout.
 7. Create and push a `vX.Y.Z` tag. The release workflow builds Python and MCPB artifacts and
    attaches them to the GitHub release.
 
-8. After the GitHub release assets exist, publish `server.json` to the official registry:
+8. After the GitHub release assets exist, verify that the committed `server.json` hash matches
+   the uploaded `pdf-card-mcp-lite.mcpb` asset. CI-built MCPB archives can hash differently
+   from local macOS archives, so sync `server.json` from the release asset or update the hash
+   on `main` before publishing to the registry:
+
+   ```bash
+   gh release download vX.Y.Z --pattern server.json --dir /tmp/pdf-card-mcp-release
+   diff -u server.json /tmp/pdf-card-mcp-release/server.json
+   ```
+
+9. Publish `server.json` to the official registry:
 
    ```bash
    mcp-publisher login github
    mcp-publisher publish
    ```
 
-9. Keep these discovery surfaces in sync for each launch:
+10. Keep these discovery surfaces in sync for each launch:
 
    ```bash
    gh repo edit velyan/pdf-card-mcp \
