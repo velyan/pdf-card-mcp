@@ -1,6 +1,9 @@
 .git/
 .github/
 .venv/
+.venv-*/
+.coverage
+.DS_Store
 .pytest_cache/
 .ruff_cache/
 __pycache__/

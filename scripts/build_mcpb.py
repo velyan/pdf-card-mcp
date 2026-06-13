@@ -52,6 +52,8 @@ def build_variant(variant: str, manifest_path: Path, output_path: Path) -> None:
 
 def ignore_bundle_paths(_directory: str, names: list[str]) -> set[str]:
     ignored = {
+        ".coverage",
+        ".DS_Store",
         ".git",
         ".github",
         ".mypy_cache",
@@ -65,7 +67,11 @@ def ignore_bundle_paths(_directory: str, names: list[str]) -> set[str]:
         "server.json",
         "tests",
     }
-    return {name for name in names if name in ignored or name.endswith(".egg-info")}
+    return {
+        name
+        for name in names
+        if name in ignored or name.startswith(".venv") or name.endswith(".egg-info")
+    }
 
 
 def sha256(path: Path) -> str:

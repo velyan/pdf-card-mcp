@@ -4,6 +4,8 @@ import json
 import tomllib
 from pathlib import Path
 
+from scripts.build_mcpb import ignore_bundle_paths
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -58,3 +60,33 @@ def test_glama_maintainer_metadata_exists() -> None:
 
     assert data["$schema"] == "https://glama.ai/mcp/schemas/server.json"
     assert data["maintainers"] == ["velyan"]
+
+
+def test_mcpb_builder_ignores_local_environments_and_build_outputs() -> None:
+    names = [
+        ".venv",
+        ".venv-verify",
+        ".venv-release",
+        ".coverage",
+        ".DS_Store",
+        "dist",
+        "build",
+        "pdf_card_mcp.egg-info",
+        "src",
+        "pyproject.toml",
+        "uv.lock",
+    ]
+
+    ignored = ignore_bundle_paths("/repo", names)
+
+    assert ".venv" in ignored
+    assert ".venv-verify" in ignored
+    assert ".venv-release" in ignored
+    assert ".coverage" in ignored
+    assert ".DS_Store" in ignored
+    assert "dist" in ignored
+    assert "build" in ignored
+    assert "pdf_card_mcp.egg-info" in ignored
+    assert "src" not in ignored
+    assert "pyproject.toml" not in ignored
+    assert "uv.lock" not in ignored

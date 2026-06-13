@@ -13,7 +13,7 @@
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/velyan/pdf-card-mcp/releases/download/v0.1.0/pdf-card-mcp-lite.mcpb",
-      "fileSha256": "475ee960273d861bc8209acae46f44909bab604ef647234f8648e4d402966c08",
+      "fileSha256": "652a12f8fc789ffab28e438177e9aee2af00404f563f28149a065aba355cf7e9",
       "transport": {
         "type": "stdio"
       }
