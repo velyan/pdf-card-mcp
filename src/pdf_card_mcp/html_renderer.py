@@ -42,6 +42,31 @@ def render_html(
 {style_css}
   --reader-font-size: 22px;
 }}
+html[data-theme="dark"] {{
+  color-scheme: dark;
+  --bg: #15130f;
+  --bg-rgb: 21 19 15;
+  --paper: #1e1a15;
+  --paper-rgb: 30 26 21;
+  --paper-soft: #25201a;
+  --paper-soft-rgb: 37 32 26;
+  --ink: #ece7dd;
+  --ink-rgb: 236 231 221;
+  --muted: #a59d8f;
+  --muted-rgb: 165 157 143;
+  --line: #38322b;
+  --line-rgb: 56 50 43;
+  --accent: var(--accent-strong);
+  --accent-rgb: var(--accent-strong-rgb);
+  --accent-soft: rgb(var(--accent-strong-rgb) / 0.18);
+  --plum: var(--plum-strong);
+  --plum-rgb: var(--plum-strong-rgb);
+  --plum-soft: rgb(var(--plum-strong-rgb) / 0.20);
+  --clay-soft: rgb(var(--clay-rgb) / 0.26);
+  --mark-bg: rgb(var(--gold-rgb) / 0.32);
+  --modal-bg: #15130f;
+  --meter-bg: rgb(var(--line-rgb) / 0.9);
+}}
 * {{ box-sizing: border-box; }}
 html {{ scroll-behavior: smooth; }}
 body {{
@@ -52,19 +77,32 @@ body {{
     var(--bg);
   color: var(--ink);
   font-family: var(--font-ui);
+  transition: background-color 220ms ease, color 220ms ease;
 }}
-button, input {{ font: inherit; }}
+button, input, textarea {{ font: inherit; }}
 button {{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 40px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid rgb(var(--line-rgb) / 0.7);
+  border-radius: 14px;
   background: var(--paper);
   color: var(--ink);
+  font-weight: 500;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease,
+    color 140ms ease, box-shadow 140ms ease, transform 80ms ease;
 }}
-button:hover, button:focus-visible, input:focus-visible {{
+button:hover {{
+  border-color: rgb(var(--accent-rgb) / 0.6);
+}}
+button:active {{ transform: translateY(1px); }}
+button:focus-visible, input:focus-visible, textarea:focus-visible {{
   border-color: var(--accent);
-  outline: 3px solid rgb(var(--accent-rgb) / 0.18);
+  outline: 3px solid rgb(var(--accent-rgb) / 0.2);
   outline-offset: 1px;
 }}
 .shell {{
@@ -82,34 +120,91 @@ button:hover, button:focus-visible, input:focus-visible {{
   background: rgb(var(--paper-rgb) / 0.78);
   backdrop-filter: blur(14px);
 }}
+.rail-top {{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}}
+.rail-tools {{
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+}}
+.icon-btn {{
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  border-color: rgb(var(--line-rgb) / 0.6);
+  background: rgb(var(--paper-rgb) / 0.7);
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+}}
+.icon-btn:hover {{ background: var(--accent-soft); }}
+.icon-btn:hover, .icon-btn:focus-visible {{
+  color: var(--accent);
+}}
 .brand h1 {{
   margin: 0;
   font-family: var(--font-heading);
-  font-size: 25px;
-  line-height: 1.12;
+  font-size: 24px;
+  line-height: 1.14;
   letter-spacing: 0;
 }}
 .brand p {{
   margin: 10px 0 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.45;
 }}
-.controls {{
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+.search-wrap {{
+  position: relative;
   margin: 18px 0 12px;
+}}
+.search-wrap svg {{
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 17px;
+  height: 17px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
 }}
 .search {{
   width: 100%;
-  min-height: 42px;
-  margin-bottom: 12px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  min-height: 46px;
+  padding: 0 16px 0 40px;
+  border: 1px solid rgb(var(--line-rgb) / 0.7);
+  border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
+}}
+.search-wrap svg {{ left: 15px; }}
+.controls {{
+  display: inline-flex;
+  width: 100%;
+  margin: 0 0 14px;
+  border: 1px solid rgb(var(--line-rgb) / 0.7);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--paper);
+}}
+.controls button {{
+  flex: 1;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+}}
+.controls button:first-child {{ border-right: 1px solid rgb(var(--line-rgb) / 0.6); }}
+.controls button:hover {{
+  color: var(--accent);
+  background: var(--accent-soft);
 }}
 .font-control {{
   margin: 14px 0;
@@ -126,7 +221,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   margin-bottom: 8px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 550;
 }}
 .font-row output {{
   color: var(--accent);
@@ -156,18 +251,29 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .sections {{
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }}
 .sections button {{
   width: 100%;
-  padding: 9px 10px;
+  justify-content: flex-start;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
   text-align: left;
-  background: rgb(var(--paper-rgb) / 0.78);
+}}
+.sections button:hover {{
+  background: rgb(var(--paper-rgb) / 0.9);
+  color: var(--ink);
 }}
 .sections button.active {{
-  border-color: var(--accent);
+  border-color: transparent;
   background: var(--accent-soft);
   color: var(--accent);
+  font-weight: 600;
 }}
 .content {{
   min-width: 0;
@@ -201,16 +307,16 @@ button:hover, button:focus-visible, input:focus-visible {{
 }}
 .card {{
   position: relative;
-  border: 1px solid var(--line);
+  border: 1px solid rgb(var(--line-rgb) / 0.55);
   border-radius: var(--radius);
   background: rgb(var(--paper-rgb) / 0.94);
-  box-shadow: 0 8px 22px rgb(var(--ink-rgb) / 0.055);
+  box-shadow: 0 14px 36px rgb(var(--ink-rgb) / 0.045);
   overflow: hidden;
-  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }}
 .card:hover {{
-  border-color: rgb(var(--accent-rgb) / 0.44);
-  box-shadow: 0 12px 28px rgb(var(--ink-rgb) / 0.08);
+  border-color: rgb(var(--accent-rgb) / 0.38);
+  box-shadow: 0 18px 44px rgb(var(--ink-rgb) / 0.07);
 }}
 .card.table {{ border-color: rgb(var(--plum-rgb) / 0.45); }}
 .card.figure {{ border-color: rgb(var(--accent-rgb) / 0.54); }}
@@ -248,14 +354,13 @@ button:hover, button:focus-visible, input:focus-visible {{
   align-items: center;
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid rgb(var(--plum-rgb) / 0.24);
+  border: 1px solid rgb(var(--plum-rgb) / 0.2);
   border-radius: 999px;
   background: var(--plum-soft);
   color: var(--plum);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }}
 .page-chip {{
   display: inline-flex;
@@ -266,7 +371,7 @@ button:hover, button:focus-visible, input:focus-visible {{
   background: var(--accent-soft);
   color: var(--accent);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 550;
 }}
 .card-header.plain {{
   justify-content: flex-end;
@@ -380,12 +485,13 @@ button:hover, button:focus-visible, input:focus-visible {{
   margin: 0 auto;
 }}
 .source-link {{
-  min-height: 34px;
-  padding: 0 11px;
-  border-color: rgb(var(--line-rgb) / 0.88);
+  min-height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border-color: rgb(var(--line-rgb) / 0.6);
   background: rgb(var(--paper-rgb) / 0.62);
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12.5px;
 }}
 .source-link:hover,
 .source-link:focus-visible {{
@@ -665,6 +771,99 @@ mark {{
   padding: 0 12px;
   font-size: 13px;
 }}
+.top-progress {{
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 25;
+  height: 3px;
+  background: transparent;
+}}
+.top-progress span {{
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms ease;
+}}
+.fab {{
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 15;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+  font-size: 20px;
+  box-shadow: 0 10px 26px rgb(var(--ink-rgb) / 0.22);
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease, background-color 140ms ease;
+}}
+.fab.show {{
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}}
+.fab:hover {{ background: var(--accent-strong); }}
+.toast-stack {{
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  z-index: 50;
+  display: grid;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}}
+.toast {{
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: 0 12px 30px rgb(var(--ink-rgb) / 0.28);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 200ms ease, transform 200ms ease;
+}}
+.toast.show {{ opacity: 1; transform: translateY(0); }}
+.shortcuts {{
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}}
+.shortcuts div {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--ink);
+  font-size: 14px;
+}}
+.shortcuts kbd {{
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: var(--paper-soft);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+}}
+.modal-panel.compact {{
+  width: min(420px, 94vw);
+  max-height: none;
+  grid-template-rows: auto auto;
+}}
 @media (max-width: 820px) {{
   .shell {{ display: block; }}
   .rail {{
@@ -694,17 +893,27 @@ mark {{
 </style>
 </head>
 <body>
+<div class="top-progress" aria-hidden="true"><span id="topProgress"></span></div>
 <div class="shell">
   <aside class="rail">
-    <div class="brand">
-      <h1>{title}</h1>
-      <p><span id="totalCards">0</span> cards · <span id="totalTables">0</span> tables · <span id="totalFigures">0</span> figures · <span id="totalFormulas">0</span> formulas</p>
+    <div class="rail-top">
+      <div class="brand">
+        <h1>{title}</h1>
+        <p><span id="totalCards">0</span> cards · <span id="totalTables">0</span> tables · <span id="totalFigures">0</span> figures · <span id="totalFormulas">0</span> formulas</p>
+      </div>
+      <div class="rail-tools">
+        <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle dark mode" title="Toggle theme">🌙</button>
+        <button id="helpToggle" class="icon-btn" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">?</button>
+      </div>
+    </div>
+    <div class="search-wrap">
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2"/><path d="m14 14 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="search" class="search" type="search" placeholder="Search the document" aria-label="Search the document">
     </div>
     <div class="controls">
-      <button id="prevBtn" type="button">Previous</button>
-      <button id="nextBtn" type="button">Next</button>
+      <button id="prevBtn" type="button">← Previous</button>
+      <button id="nextBtn" type="button">Next →</button>
     </div>
-    <input id="search" class="search" type="search" placeholder="Search the document" aria-label="Search the document">
     <div class="font-control">
       <div class="font-row">
         <label for="fontSize">Font size</label>
@@ -716,7 +925,7 @@ mark {{
     <div id="counter" class="counter">Card 0 of 0</div>
     <section class="annotation-controls" aria-label="Annotations">
       <h2>Annotations</h2>
-      <p class="annotation-count"><span id="annotationCount">0</span> saved</p>
+      <p id="annotationCountLine" class="annotation-count"><span id="annotationCount">0</span> saved</p>
       <div id="annotationButtons" class="annotation-buttons">
         <button id="exportAnnotations" type="button">Export Markdown</button>
       </div>
@@ -732,6 +941,24 @@ mark {{
     <section id="cards" class="cards" aria-live="polite"></section>
     <div id="empty" class="empty">No cards match this search.</div>
   </main>
+</div>
+<button id="scrollTop" class="fab" type="button" aria-label="Back to top" title="Back to top">↑</button>
+<div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
+<div id="helpModal" class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+  <div class="modal-panel compact">
+    <div class="modal-head">
+      <strong>Keyboard shortcuts</strong>
+      <button id="closeHelp" type="button">Close</button>
+    </div>
+    <div class="shortcuts">
+      <div><span>Next card</span><kbd>→</kbd></div>
+      <div><span>Previous card</span><kbd>←</kbd></div>
+      <div><span>Search</span><kbd>/</kbd></div>
+      <div><span>Toggle theme</span><kbd>T</kbd></div>
+      <div><span>Save note</span><kbd>⌘ / Ctrl + ⏎</kbd></div>
+      <div><span>Close dialog</span><kbd>Esc</kbd></div>
+    </div>
+  </div>
 </div>
 <div id="modal" class="modal" role="dialog" aria-modal="true" aria-label="Source page">
   <div class="modal-panel">
@@ -777,7 +1004,6 @@ const sectionsEl = document.getElementById("sections");
 const modalEl = document.getElementById("modal");
 const modalImageEl = document.getElementById("modalImage");
 const modalTitleEl = document.getElementById("modalTitle");
-const annotationCountEl = document.getElementById("annotationCount");
 const annotationButtonsEl = document.getElementById("annotationButtons");
 const annotationListEl = document.getElementById("annotationList");
 const exportAnnotationsEl = document.getElementById("exportAnnotations");
@@ -902,6 +1128,7 @@ function removeAnnotation(annotationId) {{
   saveLocalAnnotations();
   renderAnnotationList();
   renderCards();
+  showToast("Annotation removed");
 }}
 
 function currentAnnotationBundle() {{
@@ -1033,6 +1260,7 @@ function createAnnotation(kind, note = "") {{
   annotationPopoverEl.classList.remove("open");
   closeNoteEditor();
   renderCards();
+  showToast(kind === "note" ? "Note saved" : "Highlight saved");
 }}
 
 function beginNoteAnnotation() {{
@@ -1058,8 +1286,15 @@ function closeNoteEditor() {{
 }}
 
 function renderAnnotationList() {{
-  annotationCountEl.textContent = String(annotations.length);
-  annotationButtonsEl.style.display = annotationReadOnly ? "none" : "grid";
+  const countLine = document.getElementById("annotationCountLine");
+  if (!annotations.length) {{
+    countLine.textContent = annotationReadOnly
+      ? "No annotations."
+      : "Select text to highlight or add a note.";
+  }} else {{
+    countLine.innerHTML = `<span id="annotationCount">${{annotations.length}}</span> saved`;
+  }}
+  annotationButtonsEl.style.display = annotationReadOnly || !annotations.length ? "none" : "grid";
   annotationListEl.innerHTML = "";
   const visible = annotations.slice(0, 30);
   for (const annotation of visible) {{
@@ -1107,6 +1342,7 @@ function exportAnnotations() {{
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  showToast(annotations.length ? "Markdown exported" : "Nothing to export yet");
 }}
 
 function markdownEscape(value) {{
@@ -1370,10 +1606,85 @@ const observer = new IntersectionObserver(entries => {{
   updatePosition();
 }}, {{ threshold: [0.35, 0.6, 0.9] }});
 
+// --- Toast notifications -------------------------------------------------
+const toastStackEl = document.getElementById("toastStack");
+function showToast(message) {{
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  toastStackEl.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("show"));
+  setTimeout(() => {{
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 240);
+  }}, 2200);
+}}
+
+// --- Theme toggle --------------------------------------------------------
+const themeToggleEl = document.getElementById("themeToggle");
+function applyTheme(theme) {{
+  const dark = theme === "dark";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  themeToggleEl.textContent = dark ? "☀️" : "🌙";
+  themeToggleEl.title = dark ? "Switch to light" : "Switch to dark";
+}}
+function toggleTheme() {{
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try {{ localStorage.setItem("pdf-card-reader-theme", next); }} catch (_) {{}}
+  showToast(next === "dark" ? "Dark theme" : "Light theme");
+}}
+(function initTheme() {{
+  let stored = null;
+  try {{ stored = localStorage.getItem("pdf-card-reader-theme"); }} catch (_) {{}}
+  if (!stored && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {{
+    stored = "dark";
+  }}
+  applyTheme(stored === "dark" ? "dark" : "light");
+}})();
+themeToggleEl.addEventListener("click", toggleTheme);
+
+// --- Help / keyboard shortcuts ------------------------------------------
+const helpModalEl = document.getElementById("helpModal");
+document.getElementById("helpToggle").addEventListener("click", () => helpModalEl.classList.add("open"));
+document.getElementById("closeHelp").addEventListener("click", () => helpModalEl.classList.remove("open"));
+helpModalEl.addEventListener("click", event => {{
+  if (event.target === helpModalEl) helpModalEl.classList.remove("open");
+}});
+
+// --- Reading progress + back to top -------------------------------------
+const topProgressEl = document.getElementById("topProgress");
+const scrollTopEl = document.getElementById("scrollTop");
+function updateScrollUi() {{
+  const doc = document.documentElement;
+  const max = doc.scrollHeight - doc.clientHeight;
+  const ratio = max > 0 ? Math.min(1, doc.scrollTop / max) : 0;
+  topProgressEl.style.width = `${{ratio * 100}}%`;
+  scrollTopEl.classList.toggle("show", doc.scrollTop > 600);
+}}
+window.addEventListener("scroll", updateScrollUi, {{ passive: true }});
+window.addEventListener("resize", updateScrollUi, {{ passive: true }});
+scrollTopEl.addEventListener("click", () => window.scrollTo({{ top: 0, behavior: "smooth" }}));
+
+// --- Global shortcuts ----------------------------------------------------
+document.addEventListener("keydown", event => {{
+  const typing = ["INPUT", "TEXTAREA"].includes(event.target.tagName);
+  if (event.key === "Escape") helpModalEl.classList.remove("open");
+  if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key === "/") {{
+    event.preventDefault();
+    searchEl.focus();
+    searchEl.select();
+  }} else if (event.key === "t" || event.key === "T") {{
+    toggleTheme();
+  }}
+}});
+
 loadLocalAnnotations();
 renderAnnotationList();
 renderSections();
 renderCards();
+updateScrollUi();
 </script>
 </body>
 </html>

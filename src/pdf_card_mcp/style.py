@@ -243,19 +243,19 @@ def safe_reader_style(style: ReaderStyle | None) -> ReaderStyle:
 
 def reader_style_css_variables(style: ReaderStyle | None) -> dict[str, str]:
     safe = safe_reader_style(style)
-    radius = {"square": "3px", "soft": "8px", "rounded": "14px"}.get(
+    radius = {"square": "10px", "soft": "18px", "rounded": "24px"}.get(
         safe.corner_style,
-        "8px",
+        "18px",
     )
-    gap = {"compact": "12px", "comfortable": "16px", "spacious": "20px"}.get(
+    gap = {"compact": "14px", "comfortable": "18px", "spacious": "22px"}.get(
         safe.density,
-        "16px",
+        "18px",
     )
     card_padding = {
-        "compact": "10px 18px 18px",
-        "comfortable": "12px 22px 22px",
-        "spacious": "16px 26px 26px",
-    }.get(safe.density, "12px 22px 22px")
+        "compact": "12px 20px 20px",
+        "comfortable": "16px 26px 24px",
+        "spacious": "18px 30px 28px",
+    }.get(safe.density, "16px 26px 24px")
     font_ui, font_text, font_heading = font_stacks(safe.typography)
     variables = {
         "--bg": safe.bg,
@@ -266,8 +266,12 @@ def reader_style_css_variables(style: ReaderStyle | None) -> dict[str, str]:
         "--line": safe.line,
         "--accent": safe.accent,
         "--accent-soft": safe.accent_soft,
+        "--accent-strong": mix_hex(safe.accent, "#ffffff", 0.34),
+        "--accent-strong-rgb": rgb_channels(mix_hex(safe.accent, "#ffffff", 0.34)),
         "--plum": safe.plum,
         "--plum-soft": safe.plum_soft,
+        "--plum-strong": mix_hex(safe.plum, "#ffffff", 0.36),
+        "--plum-strong-rgb": rgb_channels(mix_hex(safe.plum, "#ffffff", 0.36)),
         "--clay": safe.clay,
         "--clay-soft": safe.clay_soft,
         "--gold": safe.gold,
