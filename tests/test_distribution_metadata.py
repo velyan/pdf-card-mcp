@@ -27,7 +27,7 @@ def test_server_json_is_registry_safe() -> None:
 
     package = data["packages"][0]
     assert package["registryType"] == "mcpb"
-    assert package["identifier"].endswith("/v0.1.0/pdf-card-mcp-lite.mcpb")
+    assert package["identifier"].endswith("/v0.1.1/pdf-card-mcp-lite.mcpb")
     assert len(package["fileSha256"]) == 64
     assert set(package["fileSha256"]) <= set("0123456789abcdef")
 
@@ -53,6 +53,18 @@ def test_distribution_keywords_are_consistent() -> None:
     assert required <= project_keywords
     assert required <= manifest_keywords
     assert required <= full_manifest_keywords
+
+
+def test_mcpb_manifest_declares_smithery_compatible_runtime() -> None:
+    for manifest_name in ("manifest.json", "manifest.full.json"):
+        manifest = load_json(manifest_name)
+
+        assert manifest["server"]["type"] == "python"
+        assert {tool["name"] for tool in manifest["tools"]} == {
+            "convert_pdf_to_card_html",
+            "validate_reader_annotations",
+            "publish_reader_bundle",
+        }
 
 
 def test_glama_maintainer_metadata_exists() -> None:

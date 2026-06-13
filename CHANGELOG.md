@@ -6,6 +6,11 @@ All notable changes to PDF Card MCP will be documented here.
 
 Nothing yet.
 
+## 0.1.1 - 2026-06-13
+
+- Declare MCPB bundles as Python runtime while continuing to execute through `uv`, improving
+  compatibility with registries that do not recognize `server.type = "uv"`.
+
 ## 0.1.0 - 2026-06-13
 
 - Initial alpha converter, CLI, MCP server, and MCPB packaging.

@@ -231,13 +231,13 @@ This repo is arranged so the root can be packed directly:
 python scripts/build_mcpb.py --variant all
 ```
 
-The slim bundle writes `dist/pdf-card-mcp-lite.mcpb`. The full-quality UV bundle writes
+The slim bundle writes `dist/pdf-card-mcp-lite.mcpb`. The full-quality UV-powered bundle writes
 `dist/pdf-card-mcp.mcpb` and installs the `table-ml` extra. Neither bundle vendors ML model
 weights; `gmft` downloads and caches them locally on first use unless `offline=true` is set
 with a prewarmed cache.
 
-The MCPB manifests use `server.type = "uv"`, so hosts that support UV runtime can install
-dependencies from `pyproject.toml` instead of relying on a user-managed Python setup.
+The MCPB manifests declare a Python runtime and execute through `uv`, so compatible hosts can
+install dependencies from `pyproject.toml` instead of relying on a user-managed Python setup.
 
 ## Privacy
 
