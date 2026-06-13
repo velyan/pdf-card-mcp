@@ -21,18 +21,43 @@ def test_mcp_tool_signature_has_expected_inputs() -> None:
     assert "model_cache_dir" in signature.parameters
     assert "offline" in signature.parameters
 
+    publish_signature = inspect.signature(server.publish_reader_bundle)
+    assert "reader_html_path" in publish_signature.parameters
+    assert "annotations_path" in publish_signature.parameters
+    assert "output_path" in publish_signature.parameters
+    assert "include_private" in publish_signature.parameters
+    assert "redact_source_path" in publish_signature.parameters
+    assert "read_only" in publish_signature.parameters
+
+    validate_signature = inspect.signature(server.validate_reader_annotations)
+    assert "reader_html_path" in validate_signature.parameters
+    assert "annotations_path" in validate_signature.parameters
+    assert "include_private" in validate_signature.parameters
+
 
 def test_mcp_tool_schema_hides_context_and_constrains_postprocess_engine() -> None:
     async def list_tool_parameters() -> dict:
         tools = await server.mcp.list_tools()
         tool = next(tool for tool in tools if tool.name == "convert_pdf_to_card_html")
-        return tool.parameters
+        publish_tool = next(tool for tool in tools if tool.name == "publish_reader_bundle")
+        validate_tool = next(tool for tool in tools if tool.name == "validate_reader_annotations")
+        return {
+            "convert": tool.parameters,
+            "publish": publish_tool.parameters,
+            "validate": validate_tool.parameters,
+        }
 
-    parameters = asyncio.run(list_tool_parameters())
+    schemas = asyncio.run(list_tool_parameters())
+    parameters = schemas["convert"]
 
     assert "ctx" not in parameters["properties"]
     assert parameters["properties"]["postprocess_engine"]["enum"] == ["none", "sampling"]
     assert parameters["properties"]["style_engine"]["enum"] == ["fixed", "pdf", "sampling"]
+    assert "reader_html_path" in schemas["publish"]["properties"]
+    assert "output_path" in schemas["publish"]["properties"]
+    assert "include_private" in schemas["publish"]["properties"]
+    assert "reader_html_path" in schemas["validate"]["properties"]
+    assert "annotations_path" in schemas["validate"]["properties"]
 
 
 def test_style_sampling_without_context_returns_deterministic_payload(monkeypatch, tmp_path: Path) -> None:

@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.velyan/pdf-card-mcp",
   "title": "PDF Card MCP",
-  "description": "Local-first MCP server that converts PDFs into polished standalone card-based HTML readers with PDF-inspired styling, embedded source-page/table/figure/formula crops, and optional validated host sampling for style tokens or boundary polish.",
+  "description": "Local-first MCP server that converts PDFs into standalone card-based HTML readers, validates notes/highlights sidecars, publishes static annotated reader bundles, and supports optional validated host sampling for style tokens or boundary polish.",
   "version": "0.1.0",
   "packages": [
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/velyan/pdf-card-mcp/releases/download/v0.1.0/pdf-card-mcp-lite.mcpb",
-      "fileSha256": "646688805e651971e1b4a62b45cf61befdbf19eea1cd083d37b095e30616a79e",
+      "fileSha256": "475ee960273d861bc8209acae46f44909bab604ef647234f8648e4d402966c08",
       "transport": {
         "type": "stdio"
       }

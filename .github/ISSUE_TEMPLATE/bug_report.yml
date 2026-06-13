@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible conversion, reader, CLI, or MCP problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Include commands and a minimal document description. Do not attach private PDFs.
+      placeholder: |
+        pdf-card-mcp path/to/document.pdf --output out/document.html
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "0.1.0, commit hash, or MCPB filename"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - PDF extraction
+        - Reader HTML
+        - Notes and highlights
+        - Static publishing
+        - MCP server
+        - Packaging
+        - Other

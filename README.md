@@ -18,13 +18,20 @@ This is an early open-source implementation. It is useful for text-layer PDFs no
 best-effort table detection via `pdfplumber`, permissive raster rendering via `pypdfium2`,
 and optional richer local table detection via `gmft`. Scanned PDFs need optional OCR support.
 
-## Install For Development
+## Install
 
 ```bash
-cd /Users/vel/Projects/pdf-card-mcp
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install pdf-card-mcp
+```
+
+For local development:
+
+```bash
+git clone https://github.com/velyan/pdf-card-mcp.git
+cd pdf-card-mcp
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -e ".[dev]"
 ```
 
 `uv` is recommended for MCPB packaging:
@@ -53,12 +60,54 @@ The command writes:
   formula crops, and source-page images.
 - `document.manifest.json`: structured metadata without embedded image payloads.
 
+The explicit subcommand form is also supported:
+
+```bash
+pdf-card-mcp convert path/to/document.pdf --output examples/out/document.html
+```
+
+## Notes, Highlights, And Static Publishing
+
+Generated readers include a local annotation overlay. You can select text in text cards, create
+private highlights or notes, and export them as a `.annotations.json` sidecar. Notes and
+highlights are user-authored data and are kept separate from the source-derived
+`document.manifest.json`.
+
+Validate a sidecar against a reader:
+
+```bash
+pdf-card-mcp validate-annotations examples/out/document.html document.annotations.json
+```
+
+Publish a shareable static reader with public annotations:
+
+```bash
+pdf-card-mcp publish examples/out/document.html \
+  --annotations document.annotations.json \
+  --output published/document-reader.html
+```
+
+If `--output` is a directory instead of an `.html` file, the command writes a static bundle:
+
+- `index.html`
+- `reader.manifest.json`
+- `reader.annotations.json`
+- `bundle.json`
+
+Publishing includes only `visibility: public` annotations by default, redacts the local
+`source_pdf` path by default, and renders the published reader read-only by default. Use
+`--include-private` only when you intentionally want private local notes included in the
+published output. Publishing fails if any included annotation cannot be anchored to the reader;
+run `validate-annotations` to inspect mismatches before publishing.
+
 ## MCP Tool
 
-The server exposes one primary tool:
+The server exposes three tools:
 
 ```text
 convert_pdf_to_card_html
+validate_reader_annotations
+publish_reader_bundle
 ```
 
 Inputs:
@@ -83,6 +132,10 @@ Inputs:
   support sampling, deterministic output is returned with a warning.
 - `model_cache_dir`: optional cache directory for local ML table model weights.
 - `offline`: use only already-cached optional ML models.
+
+`validate_reader_annotations` checks a notes/highlights sidecar against a generated reader.
+`publish_reader_bundle` writes a publish-ready static HTML file or directory bundle from an
+existing generated reader and an optional annotation sidecar.
 
 Sampling post-processing is intentionally narrow. For card boundaries, the host LLM may
 suggest merges, heading extraction, or front-matter/footnote classification, but Python
@@ -115,8 +168,17 @@ dependencies from `pyproject.toml` instead of relying on a user-managed Python s
 
 ## Privacy
 
-PDF processing is local. The tool does not upload document contents or call external APIs.
-Optional OCR runs locally when the user has installed OCR dependencies.
+Default PDF processing is local. The deterministic converter does not upload document contents
+or call external APIs. Optional OCR runs locally when the user has installed OCR dependencies.
+
+When `style_engine=sampling` or `postprocess_engine=sampling` is enabled through MCP, the host
+LLM may receive bounded style hints or card text snippets so it can return validated style-token
+or boundary-operation plans. Use deterministic `fixed`/`pdf` style and `postprocess_engine=none`
+when no document-derived text should leave the local process.
+
+Published readers may contain extracted PDF text, source-page images, table/figure/formula crops,
+and any included public notes or highlights. Only publish generated readers when you have the
+rights to share the source document content and your annotations.
 
 ## How It Works
 

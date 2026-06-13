@@ -3,8 +3,8 @@
   "name": "pdf-card-mcp",
   "display_name": "PDF Card Reader",
   "version": "0.1.0",
-  "description": "Convert local PDFs into standalone, readable card-based HTML pages with PDF-inspired styling and embedded table and figure images.",
-  "long_description": "PDF Card Reader is a local-first MCP tool for turning dense PDFs into minimal HTML readers inspired by the source document. It derives safe reader styling from local PDF palette hints. This full variant installs the optional local ML table detector for stronger table crops while keeping all document processing on-device.",
+  "description": "Convert local PDFs into standalone reader pages, validate notes/highlights, and publish static annotated bundles with optional stronger local table detection.",
+  "long_description": "PDF Card Reader is a local-first MCP tool for turning dense PDFs into minimal HTML readers inspired by the source document. It derives safe reader styling from local PDF palette hints, supports local notes/highlights as a separate sidecar, and can validate or publish static annotated reader bundles. This full variant installs the optional local ML table detector for stronger table crops while keeping deterministic document processing on-device.",
   "author": {
     "name": "PDF Card MCP Contributors"
   },
@@ -34,7 +34,15 @@
   "tools": [
     {
       "name": "convert_pdf_to_card_html",
-      "description": "Convert a local PDF into a standalone card-based HTML reader with PDF-inspired styling and embedded table and figure images."
+      "description": "Convert a local PDF into a standalone card-based HTML reader with PDF-inspired styling and embedded source-page, table, figure, and formula images."
+    },
+    {
+      "name": "validate_reader_annotations",
+      "description": "Validate a notes/highlights annotation sidecar against a generated reader HTML file."
+    },
+    {
+      "name": "publish_reader_bundle",
+      "description": "Publish a generated reader as a single static HTML file or directory bundle with selected public notes and highlights."
     }
   ],
   "tools_generated": false,

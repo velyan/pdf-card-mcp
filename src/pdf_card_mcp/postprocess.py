@@ -490,6 +490,7 @@ def card_from_payload(payload: dict) -> Card:
         image_id=payload.get("image_id"),
         source_image_id=payload.get("source_image_id"),
         bbox=tuple(float(value) for value in bbox) if bbox is not None else None,
+        items=[dict(item) for item in payload.get("items", []) if isinstance(item, dict)],
     )
 
 
