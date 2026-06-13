@@ -13,7 +13,7 @@
     "url": "https://github.com/velyan/pdf-card-mcp.git"
   },
   "license": "MIT",
-  "keywords": ["pdf", "html", "reader", "tables", "accessibility", "local-first"],
+  "keywords": ["mcp", "model-context-protocol", "pdf", "documents", "html", "reader", "accessibility", "local-first", "annotations", "claude"],
   "server": {
     "type": "uv",
     "entry_point": "src/pdf_card_mcp/server.py",

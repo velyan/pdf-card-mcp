@@ -7,7 +7,18 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "PDF Card MCP Contributors" }]
-keywords = ["mcp", "pdf", "html", "accessibility", "documents"]
+keywords = [
+  "mcp",
+  "model-context-protocol",
+  "pdf",
+  "documents",
+  "html",
+  "reader",
+  "accessibility",
+  "local-first",
+  "annotations",
+  "claude",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",

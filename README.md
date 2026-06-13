@@ -2,6 +2,11 @@
 
 <!-- mcp-name: io.github.velyan/pdf-card-mcp -->
 
+[![PyPI](https://img.shields.io/pypi/v/pdf-card-mcp.svg)](https://pypi.org/project/pdf-card-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/pdf-card-mcp.svg)](https://pypi.org/project/pdf-card-mcp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![MCP Registry](https://img.shields.io/badge/MCP-registry-blue)](https://registry.modelcontextprotocol.io)
+
 PDF Card MCP is a local-first MCP server and CLI for turning dense local PDFs into
 portable, source-linked HTML readers. An MCP host can ask it to convert a PDF path, validate
 notes/highlights, or publish a static annotated reader bundle. The converter preserves source
@@ -25,8 +30,16 @@ and optional richer local table detection via `gmft`. Scanned PDFs need optional
 
 ## Install
 
+From PyPI after the first public package release:
+
 ```bash
 python -m pip install pdf-card-mcp
+```
+
+Until that release is published, install directly from the repository:
+
+```bash
+python -m pip install "pdf-card-mcp @ git+https://github.com/velyan/pdf-card-mcp.git"
 ```
 
 For local development:
@@ -52,6 +65,50 @@ Install the optional local ML table detector when you want stronger table crops:
 uv sync --extra table-ml
 uv run --extra table-ml pdf-card-mcp path/to/document.pdf --table-engine gmft
 ```
+
+## Use In An MCP Client
+
+After the package is available on PyPI, add it to Claude Code or another CLI-compatible MCP
+client with `uvx`:
+
+```bash
+claude mcp add pdf-card -- uvx --from pdf-card-mcp pdf-card-mcp-server
+```
+
+Generic MCP host configuration:
+
+```json
+{
+  "mcpServers": {
+    "pdf-card": {
+      "command": "uvx",
+      "args": ["--from", "pdf-card-mcp", "pdf-card-mcp-server"]
+    }
+  }
+}
+```
+
+For local development before the PyPI release, point the client at this checkout:
+
+```json
+{
+  "mcpServers": {
+    "pdf-card-local": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/pdf-card-mcp",
+        "run",
+        "python",
+        "-m",
+        "pdf_card_mcp.server"
+      ]
+    }
+  }
+}
+```
+
+Claude Desktop can also install the `.mcpb` bundle from the latest GitHub release.
 
 ## CLI Usage
 
