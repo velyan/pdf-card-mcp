@@ -68,12 +68,19 @@ pdf-card-mcp convert path/to/document.pdf --output examples/out/document.html
 
 ## Notes, Highlights, And Static Publishing
 
-Generated readers include a local annotation overlay. You can select text in text cards, create
-private highlights or notes, and export them as a `.annotations.json` sidecar. Notes and
-highlights are user-authored data and are kept separate from the source-derived
+Generated readers include a local annotation overlay:
+
+- A highlight is selected source text.
+- A note is selected source text plus your own typed note text.
+
+Select text in a text card, choose `Highlight` or `Note`, and use `Export Markdown` to download
+a readable `.annotations.md` file. Import is intentionally not exposed in the reader UI yet.
+Notes and highlights are user-authored data and are kept separate from the source-derived
 `document.manifest.json`.
 
-Validate a sidecar against a reader:
+The lower-level CLI and MCP publishing tools still accept a structured annotation bundle when
+you need to build a read-only static reader with embedded annotations. Validate that bundle
+against a reader:
 
 ```bash
 pdf-card-mcp validate-annotations examples/out/document.html document.annotations.json

@@ -6,7 +6,8 @@ Generated readers should be written to `examples/out/`, which is ignored by git.
 pdf-card-mcp path/to/your-document.pdf --output examples/out/your-document.html
 ```
 
-To publish a reader with public notes and highlights:
+Generated readers can export local notes and highlights as Markdown from the sidebar. To publish
+a read-only static bundle with embedded annotations, pass a structured annotation bundle:
 
 ```bash
 pdf-card-mcp publish examples/out/your-document.html \

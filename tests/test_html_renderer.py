@@ -157,3 +157,12 @@ def test_renderer_embeds_annotation_bundle_in_read_only_mode() -> None:
     assert "annotation-mark" in html
     assert "pdf-card-reader:" in html
     assert "data-annotatable" in html
+    assert "Export Markdown" in html
+    assert ".annotations.md" in html
+    assert "noteEditorText" in html
+    assert "Save note" in html
+    assert "removeAnnotation" in html
+    assert "Remove" in html
+    assert "window.prompt" not in html
+    assert "importAnnotations" not in html
+    assert "annotationFile" not in html

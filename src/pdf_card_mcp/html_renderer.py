@@ -464,7 +464,7 @@ mark {{
 }}
 .annotation-buttons {{
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
 }}
 .annotation-buttons button {{
@@ -483,26 +483,69 @@ mark {{
   gap: 8px;
   max-height: 230px;
   overflow: auto;
+  overscroll-behavior: contain;
 }}
 .annotation-item {{
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
   gap: 5px;
   width: 100%;
+  height: auto;
+  min-height: 0;
   padding: 8px;
   border: 1px solid rgb(var(--line-rgb) / 0.72);
   border-radius: 8px;
   background: rgb(var(--paper-rgb) / 0.74);
   text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+}}
+.annotation-item:hover,
+.annotation-item:focus-visible {{
+  border-color: rgb(var(--accent-rgb) / 0.42);
+  outline: 3px solid rgb(var(--accent-rgb) / 0.12);
+  outline-offset: 1px;
 }}
 .annotation-item strong {{
+  grid-column: 1;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ink);
   font-size: 13px;
   line-height: 1.2;
 }}
 .annotation-item span {{
+  grid-column: 1 / -1;
+  display: -webkit-box;
+  min-width: 0;
+  max-height: calc(1.3em * 3);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.3;
+}}
+.remove-annotation {{
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 26px;
+  padding: 0 8px;
+  border-color: rgb(var(--line-rgb) / 0.75);
+  background: rgb(var(--paper-rgb) / 0.7);
+  color: var(--muted);
+  font-size: 12px;
+}}
+.remove-annotation:hover,
+.remove-annotation:focus-visible {{
+  color: var(--clay);
+  background: var(--clay-soft);
+  border-color: rgb(var(--clay-rgb) / 0.45);
 }}
 .annotation-mark {{
   border-radius: 3px;
@@ -559,6 +602,69 @@ mark {{
   padding: 0 10px;
   font-size: 13px;
 }}
+.note-editor {{
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  place-items: center;
+  padding: 18px;
+  background: rgb(var(--ink-rgb) / 0.38);
+}}
+.note-editor.open {{
+  display: grid;
+}}
+.note-editor-panel {{
+  display: grid;
+  gap: 10px;
+  width: min(460px, 94vw);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: 0 24px 70px rgb(var(--ink-rgb) / 0.24);
+  padding: 14px;
+}}
+.note-editor-panel h2 {{
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}}
+.note-editor-quote {{
+  margin: 0;
+  max-height: 90px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}}
+.note-editor textarea {{
+  width: 100%;
+  min-height: 130px;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}}
+.note-editor-actions {{
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}}
+.note-editor-actions button {{
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}}
 @media (max-width: 820px) {{
   .shell {{ display: block; }}
   .rail {{
@@ -612,10 +718,8 @@ mark {{
       <h2>Annotations</h2>
       <p class="annotation-count"><span id="annotationCount">0</span> saved</p>
       <div id="annotationButtons" class="annotation-buttons">
-        <button id="exportAnnotations" type="button">Export</button>
-        <button id="importAnnotations" type="button">Import</button>
+        <button id="exportAnnotations" type="button">Export Markdown</button>
       </div>
-      <input id="annotationFile" type="file" accept="application/json,.json" hidden>
       <div id="annotationList" class="annotation-list"></div>
     </section>
     <nav id="sections" class="sections" aria-label="Sections"></nav>
@@ -642,6 +746,18 @@ mark {{
   <button id="highlightSelection" type="button">Highlight</button>
   <button id="noteSelection" type="button">Note</button>
 </div>
+<div id="noteEditor" class="note-editor" role="dialog" aria-modal="true" aria-labelledby="noteEditorTitle">
+  <div class="note-editor-panel">
+    <h2 id="noteEditorTitle">Add note</h2>
+    <p id="noteEditorQuote" class="note-editor-quote"></p>
+    <label for="noteEditorText">Your note</label>
+    <textarea id="noteEditorText" placeholder="Type your note"></textarea>
+    <div class="note-editor-actions">
+      <button id="cancelNote" type="button">Cancel</button>
+      <button id="saveNote" type="button">Save note</button>
+    </div>
+  </div>
+</div>
 <script>
 const payload = {payload_json};
 const assetMap = new Map(payload.assets.map(asset => [asset.id, asset]));
@@ -665,11 +781,14 @@ const annotationCountEl = document.getElementById("annotationCount");
 const annotationButtonsEl = document.getElementById("annotationButtons");
 const annotationListEl = document.getElementById("annotationList");
 const exportAnnotationsEl = document.getElementById("exportAnnotations");
-const importAnnotationsEl = document.getElementById("importAnnotations");
-const annotationFileEl = document.getElementById("annotationFile");
 const annotationPopoverEl = document.getElementById("annotationPopover");
 const highlightSelectionEl = document.getElementById("highlightSelection");
 const noteSelectionEl = document.getElementById("noteSelection");
+const noteEditorEl = document.getElementById("noteEditor");
+const noteEditorQuoteEl = document.getElementById("noteEditorQuote");
+const noteEditorTextEl = document.getElementById("noteEditorText");
+const saveNoteEl = document.getElementById("saveNote");
+const cancelNoteEl = document.getElementById("cancelNote");
 const annotationBundle = annotationConfig.bundle || {{}};
 const annotationReadOnly = Boolean(annotationConfig.read_only);
 const documentId = annotationBundle.document_id || `${{payload.title || "reader"}}-${{payload.page_count || 0}}-${{payload.card_count || 0}}`;
@@ -777,6 +896,14 @@ function mergeAnnotations(items, persist = true) {{
   renderAnnotationList();
 }}
 
+function removeAnnotation(annotationId) {{
+  if (annotationReadOnly) return;
+  annotations = annotations.filter(item => item.id !== annotationId);
+  saveLocalAnnotations();
+  renderAnnotationList();
+  renderCards();
+}}
+
 function currentAnnotationBundle() {{
   const now = new Date().toISOString();
   return {{
@@ -870,6 +997,7 @@ function selectionWithinAnnotatable() {{
 }}
 
 function showAnnotationPopover() {{
+  if (noteEditorEl.classList.contains("open")) return;
   pendingSelection = selectionWithinAnnotatable();
   if (!pendingSelection) {{
     annotationPopoverEl.classList.remove("open");
@@ -880,9 +1008,8 @@ function showAnnotationPopover() {{
   annotationPopoverEl.classList.add("open");
 }}
 
-function createAnnotation(kind) {{
+function createAnnotation(kind, note = "") {{
   if (!pendingSelection) return;
-  const note = kind === "note" ? window.prompt("Note") || "" : "";
   const now = new Date().toISOString();
   const annotation = {{
     id: `ann-${{Date.now()}}-${{Math.random().toString(16).slice(2)}}`,
@@ -895,7 +1022,7 @@ function createAnnotation(kind) {{
     text_end: pendingSelection.end,
     text_hash: null,
     color: kind === "note" ? "blue" : "yellow",
-    note,
+    note: note || "",
     tags: [],
     visibility: "private",
     created_at: now,
@@ -904,7 +1031,30 @@ function createAnnotation(kind) {{
   mergeAnnotations([annotation]);
   window.getSelection()?.removeAllRanges();
   annotationPopoverEl.classList.remove("open");
+  closeNoteEditor();
   renderCards();
+}}
+
+function beginNoteAnnotation() {{
+  if (!pendingSelection) return;
+  annotationPopoverEl.classList.remove("open");
+  noteEditorQuoteEl.textContent = pendingSelection.quote;
+  noteEditorTextEl.value = "";
+  noteEditorEl.classList.add("open");
+  noteEditorTextEl.focus();
+}}
+
+function saveNoteAnnotation() {{
+  const note = noteEditorTextEl.value.trim();
+  if (!note) {{
+    noteEditorTextEl.focus();
+    return;
+  }}
+  createAnnotation("note", note);
+}}
+
+function closeNoteEditor() {{
+  noteEditorEl.classList.remove("open");
 }}
 
 function renderAnnotationList() {{
@@ -913,47 +1063,91 @@ function renderAnnotationList() {{
   annotationListEl.innerHTML = "";
   const visible = annotations.slice(0, 30);
   for (const annotation of visible) {{
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "annotation-item";
+    const item = document.createElement("div");
+    item.className = "annotation-item";
+    item.role = "button";
+    item.tabIndex = 0;
     const label = annotation.kind === "note" ? "Note" : "Highlight";
     const quote = annotation.note || annotation.text_quote || "Annotation";
-    button.innerHTML = `<strong>${{escapeHtml(label)}} · Page ${{escapeHtml(annotation.page || "")}}</strong><span>${{escapeHtml(quote.slice(0, 120))}}</span>`;
-    button.addEventListener("click", () => {{
+    const removeButton = annotationReadOnly
+      ? ""
+      : `<button class="remove-annotation" type="button" data-remove-annotation="${{escapeHtml(annotation.id)}}">Remove</button>`;
+    item.innerHTML = `<strong>${{escapeHtml(label)}} · Page ${{escapeHtml(annotation.page || "")}}</strong>${{removeButton}}<span>${{escapeHtml(quote.slice(0, 120))}}</span>`;
+    const jumpToAnnotation = () => {{
       const index = filtered.findIndex(card => card.id === annotation.card_id);
       if (index >= 0) scrollToIndex(index);
+    }};
+    item.addEventListener("click", jumpToAnnotation);
+    item.addEventListener("keydown", event => {{
+      if (event.key === "Enter" || event.key === " ") {{
+        event.preventDefault();
+        jumpToAnnotation();
+      }}
     }});
-    annotationListEl.appendChild(button);
+    const remove = item.querySelector("[data-remove-annotation]");
+    if (remove) {{
+      remove.addEventListener("click", event => {{
+        event.stopPropagation();
+        removeAnnotation(annotation.id);
+      }});
+    }}
+    annotationListEl.appendChild(item);
   }}
 }}
 
 function exportAnnotations() {{
-  const blob = new Blob([JSON.stringify(currentAnnotationBundle(), null, 2)], {{
-    type: "application/json",
+  const blob = new Blob([annotationsToMarkdown()], {{
+    type: "text/markdown",
   }});
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${{documentId}}.annotations.json`;
+  link.download = `${{documentId}}.annotations.md`;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
 }}
 
-function importAnnotationsFile(file) {{
-  if (!file) return;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {{
-    try {{
-      const payload = JSON.parse(String(reader.result || "{{}}"));
-      mergeAnnotations(payload.annotations || []);
-      renderCards();
-    }} catch (_) {{
-      window.alert("Could not import annotations JSON.");
-    }}
+function markdownEscape(value) {{
+  return String(value || "").replaceAll("\\r\\n", "\\n").trim();
+}}
+
+function annotationsToMarkdown() {{
+  const lines = [
+    `# ${{markdownEscape(payload.title || "PDF Card Reader")}}`,
+    "",
+    `Exported: ${{new Date().toISOString()}}`,
+    `Document ID: ${{documentId}}`,
+    "",
+  ];
+  const sorted = [...annotations].sort((a, b) => {{
+    const pageDiff = Number(a.page || 0) - Number(b.page || 0);
+    if (pageDiff) return pageDiff;
+    return String(a.card_id).localeCompare(String(b.card_id));
   }});
-  reader.readAsText(file);
+  if (!sorted.length) {{
+    lines.push("_No notes or highlights saved._", "");
+    return lines.join("\\n");
+  }}
+  let currentPage = null;
+  for (const annotation of sorted) {{
+    const page = annotation.page || "Unknown";
+    if (page !== currentPage) {{
+      currentPage = page;
+      lines.push(`## Page ${{page}}`, "");
+    }}
+    const label = annotation.kind === "note" ? "Note" : "Highlight";
+    lines.push(`### ${{label}}`);
+    if (annotation.text_quote) {{
+      lines.push("", "> " + markdownEscape(annotation.text_quote).replaceAll("\\n", "\\n> "));
+    }}
+    if (annotation.kind === "note") {{
+      lines.push("", markdownEscape(annotation.note || "_No note text._"));
+    }}
+    lines.push("", `Source: ${{annotation.card_id}}`, "");
+  }}
+  return lines.join("\\n");
 }}
 
 function renderSections() {{
@@ -1139,23 +1333,30 @@ modalEl.addEventListener("click", event => {{
 searchEl.addEventListener("input", applyFilter);
 fontSizeEl.addEventListener("input", event => setFontSize(event.target.value));
 exportAnnotationsEl.addEventListener("click", exportAnnotations);
-importAnnotationsEl.addEventListener("click", () => annotationFileEl.click());
-annotationFileEl.addEventListener("change", event => {{
-  importAnnotationsFile(event.target.files?.[0]);
-  annotationFileEl.value = "";
-}});
+annotationPopoverEl.addEventListener("mousedown", event => event.preventDefault());
+annotationPopoverEl.addEventListener("mouseup", event => event.stopPropagation());
 highlightSelectionEl.addEventListener("click", () => createAnnotation("highlight"));
-noteSelectionEl.addEventListener("click", () => createAnnotation("note"));
+noteSelectionEl.addEventListener("click", beginNoteAnnotation);
+saveNoteEl.addEventListener("click", saveNoteAnnotation);
+cancelNoteEl.addEventListener("click", closeNoteEditor);
+noteEditorEl.addEventListener("click", event => {{
+  if (event.target === noteEditorEl) closeNoteEditor();
+}});
+noteEditorTextEl.addEventListener("keydown", event => {{
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") saveNoteAnnotation();
+}});
 document.addEventListener("mouseup", () => setTimeout(showAnnotationPopover, 0));
 document.addEventListener("keyup", event => {{
   if (event.key === "Escape") {{
     annotationPopoverEl.classList.remove("open");
+    closeNoteEditor();
     return;
   }}
   setTimeout(showAnnotationPopover, 0);
 }});
 document.addEventListener("keydown", event => {{
   if (event.key === "Escape" && modalEl.classList.contains("open")) closeSource();
+  if (event.key === "Escape" && noteEditorEl.classList.contains("open")) closeNoteEditor();
   if (event.key === "ArrowRight" && !modalEl.classList.contains("open")) scrollToIndex(activeIndex + 1);
   if (event.key === "ArrowLeft" && !modalEl.classList.contains("open")) scrollToIndex(activeIndex - 1);
 }});
