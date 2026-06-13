@@ -2,11 +2,16 @@
 
 <!-- mcp-name: io.github.velyan/pdf-card-mcp -->
 
-PDF Card MCP is a local-first MCP tool that converts dense PDFs into minimal,
-card-based HTML readers inspired by the source document. It preserves source text, renders
-source pages, crops detected tables, figures, and display formulas as images, derives a
-safe reader style from the original PDF palette, and writes a standalone HTML file that can
-be moved across devices without losing assets.
+PDF Card MCP is a local-first MCP server and CLI for turning dense local PDFs into
+portable, source-linked HTML readers. An MCP host can ask it to convert a PDF path, validate
+notes/highlights, or publish a static annotated reader bundle. The converter preserves source
+text, renders source pages for verification, crops detected tables, figures, and display
+formulas as images, derives safe reader styling from the original PDF palette, and writes a
+standalone HTML file that can be moved across devices without losing assets.
+
+Default conversion runs locally and does not require a hosted service. Optional MCP sampling
+is deliberately bounded: the host model may choose validated style tokens or suggest
+card-boundary polish operations, but raw CSS and source-text rewrites are rejected.
 
 The default reader is designed for comfortable reading: large type, small cards, search,
 section navigation, next/previous controls, keyboard navigation, a font-size slider, and
@@ -108,6 +113,10 @@ published output. Publishing fails if any included annotation cannot be anchored
 run `validate-annotations` to inspect mismatches before publishing.
 
 ## MCP Tool
+
+The MCP server is the automation layer around the same local converter. It accepts local
+file paths from an MCP client and returns generated reader paths, manifest metadata,
+warnings, and publishing/validation results.
 
 The server exposes three tools:
 

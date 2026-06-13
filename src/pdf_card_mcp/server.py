@@ -41,7 +41,12 @@ async def convert_pdf_to_card_html(
     offline: bool = False,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Convert a local PDF into a standalone card-based HTML reader.
+    """Convert a local PDF into a portable, source-linked HTML reader.
+
+    The generated reader is static HTML with embedded assets. It keeps source text intact,
+    includes source-page previews for verification, and crops detected tables, figures, and
+    display formulas as images. Optional MCP sampling is limited to validated style-token
+    choices or boundary-only card polish; raw CSS and source-text rewrites are rejected.
 
     Args:
         pdf_path: Absolute or relative path to the input PDF.

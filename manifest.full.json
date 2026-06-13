@@ -3,8 +3,8 @@
   "name": "pdf-card-mcp",
   "display_name": "PDF Card Reader",
   "version": "0.1.0",
-  "description": "Convert local PDFs into standalone reader pages, validate notes/highlights, and publish static annotated bundles with optional stronger local table detection.",
-  "long_description": "PDF Card Reader is a local-first MCP tool for turning dense PDFs into minimal HTML readers inspired by the source document. It derives safe reader styling from local PDF palette hints, supports local notes/highlights as a separate sidecar, and can validate or publish static annotated reader bundles. This full variant installs the optional local ML table detector for stronger table crops while keeping deterministic document processing on-device.",
+  "description": "Local-first MCP server and CLI for turning PDFs into source-linked HTML readers, with notes/highlights publishing and stronger optional local table detection.",
+  "long_description": "PDF Card Reader lets an MCP host or terminal command turn a local PDF path into a portable HTML reader. Conversion runs locally by default, preserves source text, includes source-page previews for verification, embeds detected table, figure, and formula crops, derives safe styling from the PDF palette, and writes a standalone reader that can move across devices without a hosted service. The MCP server can also validate annotation sidecars and publish selected public notes/highlights as static annotated bundles. This full variant installs the optional local ML table detector for stronger table crops while keeping deterministic document processing on-device.",
   "author": {
     "name": "PDF Card MCP Contributors"
   },
@@ -34,7 +34,7 @@
   "tools": [
     {
       "name": "convert_pdf_to_card_html",
-      "description": "Convert a local PDF into a standalone card-based HTML reader with PDF-inspired styling and embedded source-page, table, figure, and formula images."
+      "description": "Convert a local PDF path into a portable, source-linked HTML reader with embedded page previews plus detected table, figure, and formula crops."
     },
     {
       "name": "validate_reader_annotations",

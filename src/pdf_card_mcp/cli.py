@@ -12,7 +12,10 @@ from .publish import publish_reader_bundle, validate_reader_annotations
 def build_convert_parser(prog: str = "pdf-card-mcp") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog,
-        description="Convert a PDF into a standalone card-based HTML reader.",
+        description=(
+            "Convert a local PDF into a portable, source-linked HTML reader with embedded "
+            "page previews and detected table, figure, and formula crops."
+        ),
     )
     parser.add_argument("pdf_path", help="Path to the input PDF.")
     parser.add_argument("-o", "--output", help="Path to write the standalone HTML file.")
@@ -47,7 +50,10 @@ def build_convert_parser(prog: str = "pdf-card-mcp") -> argparse.ArgumentParser:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pdf-card-mcp",
-        description="Convert PDFs, validate annotation sidecars, and publish static readers.",
+        description=(
+            "Local-first PDF reader toolkit: convert PDFs into source-linked HTML readers, "
+            "validate notes/highlights, and publish static annotated bundles."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command")
 
