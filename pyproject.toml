@@ -52,7 +52,7 @@ ocr = [
 ]
 table-ml = [
   "gmft>=0.4.0",
-  "transformers>=4.35.2,<5",
+  "transformers>=4.35.2,<6",
   "torchvision>=0.20.0",
 ]
 
