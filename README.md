@@ -23,16 +23,6 @@ The default reader is designed for comfortable reading: large type, small cards,
 section navigation, next/previous controls, keyboard navigation, a font-size slider, and
 source-page previews.
 
-<p align="center">
-  <img src="docs/assets/reader-overview.png" alt="PDF Card MCP reader showing source-linked cards, page previews, search, and notes" width="100%">
-</p>
-
-## What It Looks Like
-
-| Source-linked verification | Notes and highlights |
-| --- | --- |
-| <img src="docs/assets/source-preview.png" alt="A reader card opening the original PDF page crop for verification" width="100%"> | <img src="docs/assets/notes-highlights.png" alt="Reader annotations panel with a user note, a highlight, removal controls, and Markdown export" width="100%"> |
-
 PDF Card MCP is meant for PDFs you actually need to read, cite, or inspect. It turns long
 documents into smaller source-linked cards, keeps tables/figures/formulas as faithful image
 crops, and lets you export your own notes and highlights as Markdown.
