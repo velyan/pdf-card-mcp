@@ -23,6 +23,59 @@ The default reader is designed for comfortable reading: large type, small cards,
 section navigation, next/previous controls, keyboard navigation, a font-size slider, and
 source-page previews.
 
+<p align="center">
+  <img src="docs/assets/reader-overview.png" alt="PDF Card MCP reader showing source-linked cards, page previews, search, and notes" width="100%">
+</p>
+
+## What It Looks Like
+
+| Source-linked verification | Notes and highlights |
+| --- | --- |
+| <img src="docs/assets/source-preview.png" alt="A reader card opening the original PDF page crop for verification" width="100%"> | <img src="docs/assets/notes-highlights.png" alt="Reader annotations panel with a user note, a highlight, removal controls, and Markdown export" width="100%"> |
+
+PDF Card MCP is meant for PDFs you actually need to read, cite, or inspect. It turns long
+documents into smaller source-linked cards, keeps tables/figures/formulas as faithful image
+crops, and lets you export your own notes and highlights as Markdown.
+
+## Quick Examples
+
+Convert a local PDF into one portable HTML reader:
+
+```bash
+pdf-card-mcp ./paper.pdf --output ./out/paper-reader.html
+```
+
+Use the explicit subcommand form with PDF-derived styling:
+
+```bash
+pdf-card-mcp convert ./paper.pdf \
+  --output ./out/paper-reader.html \
+  --style-engine pdf
+```
+
+Run the MCP server so a compatible host can generate readers from local PDF paths:
+
+```bash
+python -m pdf_card_mcp.server
+```
+
+Publish a read-only static reader with selected public annotations:
+
+```bash
+pdf-card-mcp publish ./out/paper-reader.html \
+  --annotations ./paper.annotations.json \
+  --output ./published/paper-reader.html
+```
+
+## Output At A Glance
+
+| Output | What it contains |
+| --- | --- |
+| `paper-reader.html` | Standalone reader with embedded CSS, JavaScript, page images, and detected crops. |
+| `paper.manifest.json` | Structured metadata for cards, pages, warnings, and source anchors. |
+| Markdown export | User-authored notes and highlights from the reader UI. |
+| Published bundle | Read-only static HTML or a directory bundle for sharing public annotations. |
+
 ## Status
 
 This is an early open-source implementation. It is useful for text-layer PDFs now, with
