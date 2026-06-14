@@ -2,8 +2,9 @@
 
 <!-- mcp-name: io.github.velyan/pdf-card-mcp -->
 
-[![PyPI](https://img.shields.io/pypi/v/pdf-card-mcp.svg)](https://pypi.org/project/pdf-card-mcp/)
-[![Python](https://img.shields.io/pypi/pyversions/pdf-card-mcp.svg)](https://pypi.org/project/pdf-card-mcp/)
+[![CI](https://github.com/velyan/pdf-card-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/velyan/pdf-card-mcp/actions/workflows/ci.yml)
+[![Source Install](https://img.shields.io/badge/package-source%20install-blue.svg)](#install)
+[![Python 3.11-3.13](https://img.shields.io/badge/python-3.11--3.13-blue.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![MCP Registry](https://img.shields.io/badge/MCP-registry-blue)](https://registry.modelcontextprotocol.io)
 
