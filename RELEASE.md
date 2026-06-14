@@ -75,7 +75,7 @@ PDF Card MCP releases should be reproducible from a clean checkout.
    - Environment: `pypi`
 
    Then run the `Publish PyPI` workflow from GitHub Actions with the release tag, for example
-   `v0.1.1`. This uses GitHub OIDC and does not require storing a PyPI token in the repo.
+   `v0.1.2`. This uses GitHub OIDC and does not require storing a PyPI token in the repo.
 
 11. Keep these discovery surfaces in sync for each launch:
 

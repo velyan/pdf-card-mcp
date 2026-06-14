@@ -34,8 +34,8 @@ same source PDF opened side by side for comparison.
 
 | Generated reader | Original PDF |
 | --- | --- |
-| <img src="docs/assets/reader-annotations-real.png" alt="Generated PDF Card MCP reader showing annotations, highlighted text, typed notes, source buttons, and section navigation" width="100%"> | <img src="docs/assets/source-pdf-page-1-real.png" alt="Original PDF page 1 in Preview for source comparison" width="100%"> |
-| <img src="docs/assets/reader-figure-real.png" alt="Generated PDF Card MCP reader showing a preserved figure card and document navigation" width="100%"> | <img src="docs/assets/source-pdf-page-4-real.png" alt="Original PDF page in Preview showing the same figure and surrounding paper text" width="100%"> |
+| <img src="https://raw.githubusercontent.com/velyan/pdf-card-mcp/main/docs/assets/reader-annotations-real.png" alt="Generated PDF Card MCP reader showing annotations, highlighted text, typed notes, source buttons, and section navigation" width="100%"> | <img src="https://raw.githubusercontent.com/velyan/pdf-card-mcp/main/docs/assets/source-pdf-page-1-real.png" alt="Original PDF page 1 in Preview for source comparison" width="100%"> |
+| <img src="https://raw.githubusercontent.com/velyan/pdf-card-mcp/main/docs/assets/reader-figure-real.png" alt="Generated PDF Card MCP reader showing a preserved figure card and document navigation" width="100%"> | <img src="https://raw.githubusercontent.com/velyan/pdf-card-mcp/main/docs/assets/source-pdf-page-4-real.png" alt="Original PDF page in Preview showing the same figure and surrounding paper text" width="100%"> |
 
 ## Quick Examples
 

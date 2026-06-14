@@ -67,11 +67,15 @@ def ignore_bundle_paths(_directory: str, names: list[str]) -> set[str]:
         "server.json",
         "tests",
     }
-    return {
+    ignored_names = {
         name
         for name in names
         if name in ignored or name.startswith(".venv") or name.endswith(".egg-info")
     }
+    directory = Path(_directory)
+    if directory.name == "docs":
+        ignored_names.update(name for name in names if name == "assets")
+    return ignored_names
 
 
 def sha256(path: Path) -> str:

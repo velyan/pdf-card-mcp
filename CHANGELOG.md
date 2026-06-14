@@ -6,6 +6,11 @@ All notable changes to PDF Card MCP will be documented here.
 
 Nothing yet.
 
+## 0.1.2 - 2026-06-14
+
+- Add real README screenshots comparing generated readers with the source PDF.
+- Keep docs-only screenshot assets out of MCPB release bundles.
+
 ## 0.1.1 - 2026-06-13
 
 - Declare MCPB bundles as Python runtime while continuing to execute through `uv`, improving

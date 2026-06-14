@@ -16,9 +16,12 @@ def load_json(name: str) -> dict:
 
 def test_server_json_is_registry_safe() -> None:
     data = load_json("server.json")
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    version = pyproject["project"]["version"]
 
     assert data["name"] == "io.github.velyan/pdf-card-mcp"
     assert len(data["description"]) <= 100
+    assert data["version"] == version
     assert data["repository"] == {
         "url": "https://github.com/velyan/pdf-card-mcp",
         "source": "github",
@@ -27,7 +30,7 @@ def test_server_json_is_registry_safe() -> None:
 
     package = data["packages"][0]
     assert package["registryType"] == "mcpb"
-    assert package["identifier"].endswith("/v0.1.1/pdf-card-mcp-lite.mcpb")
+    assert package["identifier"].endswith(f"/v{version}/pdf-card-mcp-lite.mcpb")
     assert len(package["fileSha256"]) == 64
     assert set(package["fileSha256"]) <= set("0123456789abcdef")
 
@@ -102,3 +105,10 @@ def test_mcpb_builder_ignores_local_environments_and_build_outputs() -> None:
     assert "src" not in ignored
     assert "pyproject.toml" not in ignored
     assert "uv.lock" not in ignored
+
+
+def test_mcpb_builder_ignores_docs_assets() -> None:
+    ignored = ignore_bundle_paths("/repo/docs", ["assets", "how-it-works.html"])
+
+    assert "assets" in ignored
+    assert "how-it-works.html" not in ignored

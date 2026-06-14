@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "pdf-card-mcp",
   "display_name": "PDF Card Reader",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local-first MCP server and CLI for turning PDFs into source-linked HTML readers, with notes/highlights publishing and stronger optional local table detection.",
   "long_description": "PDF Card Reader lets an MCP host or terminal command turn a local PDF path into a portable HTML reader. Conversion runs locally by default, preserves source text, includes source-page previews for verification, embeds detected table, figure, and formula crops, derives safe styling from the PDF palette, and writes a standalone reader that can move across devices without a hosted service. The MCP server can also validate annotation sidecars and publish selected public notes/highlights as static annotated bundles. This full variant installs the optional local ML table detector for stronger table crops while keeping deterministic document processing on-device.",
   "author": {
