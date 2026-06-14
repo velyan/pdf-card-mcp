@@ -13,7 +13,18 @@
     "url": "https://github.com/velyan/pdf-card-mcp.git"
   },
   "license": "MIT",
-  "keywords": ["mcp", "model-context-protocol", "pdf", "documents", "html", "reader", "accessibility", "local-first", "annotations", "claude"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "pdf",
+    "documents",
+    "html",
+    "reader",
+    "accessibility",
+    "local-first",
+    "annotations",
+    "claude"
+  ],
   "server": {
     "type": "python",
     "entry_point": "src/pdf_card_mcp/server.py",
@@ -31,23 +42,13 @@
       ]
     }
   },
-  "tools": [
-    {
-      "name": "convert_pdf_to_card_html",
-      "description": "Convert a local PDF path into a portable, source-linked HTML reader with embedded page previews plus detected table, figure, and formula crops."
-    },
-    {
-      "name": "validate_reader_annotations",
-      "description": "Validate a notes/highlights annotation sidecar against a generated reader HTML file."
-    },
-    {
-      "name": "publish_reader_bundle",
-      "description": "Publish a generated reader as a single static HTML file or directory bundle with selected public notes and highlights."
-    }
-  ],
-  "tools_generated": false,
+  "tools_generated": true,
   "compatibility": {
-    "platforms": ["darwin", "win32", "linux"],
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
     "runtimes": {
       "python": ">=3.11"
     }

@@ -23,16 +23,25 @@ def test_server_json_is_registry_safe() -> None:
     assert len(data["description"]) <= 100
     assert data["version"] == version
     assert data["repository"] == {
+        "id": "1264756351",
         "url": "https://github.com/velyan/pdf-card-mcp",
         "source": "github",
     }
     assert data["websiteUrl"].startswith("https://github.com/velyan/pdf-card-mcp")
 
-    package = data["packages"][0]
-    assert package["registryType"] == "mcpb"
-    assert package["identifier"].endswith(f"/v{version}/pdf-card-mcp-lite.mcpb")
-    assert len(package["fileSha256"]) == 64
-    assert set(package["fileSha256"]) <= set("0123456789abcdef")
+    pypi_package = data["packages"][0]
+    assert pypi_package == {
+        "registryType": "pypi",
+        "identifier": "pdf-card-mcp",
+        "version": version,
+        "transport": {"type": "stdio"},
+    }
+
+    mcpb_package = data["packages"][1]
+    assert mcpb_package["registryType"] == "mcpb"
+    assert mcpb_package["identifier"].endswith(f"/v{version}/pdf-card-mcp-lite.mcpb")
+    assert len(mcpb_package["fileSha256"]) == 64
+    assert set(mcpb_package["fileSha256"]) <= set("0123456789abcdef")
 
 
 def test_distribution_keywords_are_consistent() -> None:
@@ -63,11 +72,8 @@ def test_mcpb_manifest_declares_smithery_compatible_runtime() -> None:
         manifest = load_json(manifest_name)
 
         assert manifest["server"]["type"] == "python"
-        assert {tool["name"] for tool in manifest["tools"]} == {
-            "convert_pdf_to_card_html",
-            "validate_reader_annotations",
-            "publish_reader_bundle",
-        }
+        assert "tools" not in manifest
+        assert manifest["tools_generated"] is True
 
 
 def test_glama_maintainer_metadata_exists() -> None:

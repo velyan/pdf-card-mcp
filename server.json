@@ -6,14 +6,23 @@
   "version": "0.1.2",
   "websiteUrl": "https://github.com/velyan/pdf-card-mcp#readme",
   "repository": {
+    "id": "1264756351",
     "url": "https://github.com/velyan/pdf-card-mcp",
     "source": "github"
   },
   "packages": [
     {
+      "registryType": "pypi",
+      "identifier": "pdf-card-mcp",
+      "version": "0.1.2",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
       "registryType": "mcpb",
       "identifier": "https://github.com/velyan/pdf-card-mcp/releases/download/v0.1.2/pdf-card-mcp-lite.mcpb",
-      "fileSha256": "9280e2e3d2f22d002eec848904163e7b728badf15edc94e202e4eb39a0def9c7",
+      "fileSha256": "5bb913b73e6ccbf95a7c0b31eac3a84190e00b59f8570b261f22065fedf242af",
       "transport": {
         "type": "stdio"
       }
