@@ -110,6 +110,20 @@ For local development before the PyPI release, point the client at this checkout
 
 Claude Desktop can also install the `.mcpb` bundle from the latest GitHub release.
 
+### Docker / Registry Scanners
+
+The repository includes a minimal `Dockerfile` so registries such as Glama can build the
+server, start it over stdio, and inspect its MCP tool schemas. The server still works on local
+file paths, so container users must mount any PDFs and output directories they want the tool to
+read or write:
+
+```bash
+docker build -t pdf-card-mcp .
+docker run --rm -i \
+  -v "$PWD/examples:/docs" \
+  pdf-card-mcp
+```
+
 ## CLI Usage
 
 ```bash

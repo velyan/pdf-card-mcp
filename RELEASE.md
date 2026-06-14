@@ -64,7 +64,20 @@ PDF Card MCP releases should be reproducible from a clean checkout.
    mcp-publisher publish
    ```
 
-10. Keep these discovery surfaces in sync for each launch:
+10. Publish the Python package to PyPI.
+
+   Preferred path: configure a PyPI pending trusted publisher for:
+
+   - Project name: `pdf-card-mcp`
+   - Owner: `velyan`
+   - Repository: `pdf-card-mcp`
+   - Workflow: `publish-pypi.yml`
+   - Environment: `pypi`
+
+   Then run the `Publish PyPI` workflow from GitHub Actions with the release tag, for example
+   `v0.1.1`. This uses GitHub OIDC and does not require storing a PyPI token in the repo.
+
+11. Keep these discovery surfaces in sync for each launch:
 
    ```bash
    gh repo edit velyan/pdf-card-mcp \
@@ -74,6 +87,9 @@ PDF Card MCP releases should be reproducible from a clean checkout.
    Set the GitHub repository homepage to the README, GitHub Pages docs, or the public
    registry listing after it is live. Submit or verify listings on Glama, mcp.so,
    PulseMCP, Smithery, and Awesome MCP Servers only after PyPI and the release assets work.
+   Glama should inspect the checked-in `Dockerfile`; if the public listing still says
+   "quality - not tested" or "No tools", claim the Glama entry and trigger a rebuild from the
+   admin panel.
 
 Do not publish generated readers or PDF fixtures unless the project has explicit redistribution
 rights for the source documents.
