@@ -27,6 +27,16 @@ PDF Card MCP is meant for PDFs you actually need to read, cite, or inspect. It t
 documents into smaller source-linked cards, keeps tables/figures/formulas as faithful image
 crops, and lets you export your own notes and highlights as Markdown.
 
+## Real Screenshots
+
+These screenshots are from a generated reader for *Agents in Software Engineering* and the
+same source PDF opened side by side for comparison.
+
+| Generated reader | Original PDF |
+| --- | --- |
+| <img src="docs/assets/reader-annotations-real.png" alt="Generated PDF Card MCP reader showing annotations, highlighted text, typed notes, source buttons, and section navigation" width="100%"> | <img src="docs/assets/source-pdf-page-1-real.png" alt="Original PDF page 1 in Preview for source comparison" width="100%"> |
+| <img src="docs/assets/reader-figure-real.png" alt="Generated PDF Card MCP reader showing a preserved figure card and document navigation" width="100%"> | <img src="docs/assets/source-pdf-page-4-real.png" alt="Original PDF page in Preview showing the same figure and surrounding paper text" width="100%"> |
+
 ## Quick Examples
 
 Convert a local PDF into one portable HTML reader:
