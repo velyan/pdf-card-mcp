@@ -35,7 +35,7 @@ jobs:
       - name: Build MCPB artifacts
         run: python scripts/build_mcpb.py --variant all
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*
