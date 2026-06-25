@@ -27,6 +27,41 @@ PDF Card MCP is meant for PDFs you actually need to read, cite, or inspect. It t
 documents into smaller source-linked cards, keeps tables/figures/formulas as faithful image
 crops, and lets you export your own notes and highlights as Markdown.
 
+## Quick Install (one-click)
+
+PDF Card MCP is a Python server, so it needs a runtime. The one thing to install first is
+[`uv`](https://docs.astral.sh/uv/) — it manages Python for you, so you do not have to. This is
+the only prerequisite for every install path below:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Then add the server with one click. The buttons run the published
+[`pdf-card-mcp`](https://pypi.org/project/pdf-card-mcp/) package through `uv`:
+
+[![Add to Cursor](https://img.shields.io/badge/Add_to_Cursor-black?style=for-the-badge&logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=pdf-card&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyItLWZyb20iLCJwZGYtY2FyZC1tY3AiLCJwZGYtY2FyZC1tY3Atc2VydmVyIl19)
+[![Add to VS Code](https://img.shields.io/badge/Add_to_VS_Code-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22pdf-card%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22--from%22%2C%22pdf-card-mcp%22%2C%22pdf-card-mcp-server%22%5D%7D)
+
+**Claude Code** (terminal):
+
+```bash
+claude mcp add pdf-card -- uvx --from pdf-card-mcp pdf-card-mcp-server
+```
+
+**Claude Desktop** (no terminal, no prerequisites): download `pdf-card-mcp-desktop.mcpb` from the
+[latest release](https://github.com/velyan/pdf-card-mcp/releases/latest) and double-click it to
+install as an extension. This bundle declares the `uv` runtime, so Claude Desktop installs Python
+and dependencies for you — you do not need the `uv` step above for this path.
+
+After installing, restart (or reload MCP servers in) your client so it picks up the new server.
+
 ## Real Screenshots
 
 These screenshots are from a generated reader for *Agents in Software Engineering* and the
@@ -84,13 +119,14 @@ and optional richer local table detection via `gmft`. Scanned PDFs need optional
 
 ## Install
 
-From PyPI after the first public package release:
+Most people should use the [one-click install](#quick-install-one-click) above. To install the
+package directly instead, from PyPI:
 
 ```bash
 python -m pip install pdf-card-mcp
 ```
 
-Until that release is published, install directly from the repository:
+Or install the latest unreleased changes directly from the repository:
 
 ```bash
 python -m pip install "pdf-card-mcp @ git+https://github.com/velyan/pdf-card-mcp.git"
@@ -122,8 +158,8 @@ uv run --extra table-ml pdf-card-mcp path/to/document.pdf --table-engine gmft
 
 ## Use In An MCP Client
 
-After the package is available on PyPI, add it to Claude Code or another CLI-compatible MCP
-client with `uvx`:
+Add it to Claude Code or another CLI-compatible MCP client with `uvx` (requires
+[`uv`](https://docs.astral.sh/uv/)):
 
 ```bash
 claude mcp add pdf-card -- uvx --from pdf-card-mcp pdf-card-mcp-server
@@ -299,13 +335,17 @@ This repo is arranged so the root can be packed directly:
 python scripts/build_mcpb.py --variant all
 ```
 
-The slim bundle writes `dist/pdf-card-mcp-lite.mcpb`. The full-quality UV-powered bundle writes
-`dist/pdf-card-mcp.mcpb` and installs the `table-ml` extra. Neither bundle vendors ML model
-weights; `gmft` downloads and caches them locally on first use unless `offline=true` is set
-with a prewarmed cache.
+This builds three bundles:
 
-The MCPB manifests declare a Python runtime and execute through `uv`, so compatible hosts can
-install dependencies from `pyproject.toml` instead of relying on a user-managed Python setup.
+- `dist/pdf-card-mcp-lite.mcpb` and `dist/pdf-card-mcp.mcpb` declare `server.type = "python"`
+  for MCP registry and Smithery directory compatibility. The full bundle additionally installs the
+  `table-ml` extra. These execute through `uv`, so the host (or user) must provide `uv`.
+- `dist/pdf-card-mcp-desktop.mcpb` declares `server.type = "uv"` (from `manifest.uv.json`). Claude
+  Desktop manages Python and dependencies itself, so end users can double-click to install with no
+  prerequisites. This is the bundle linked from the one-click install section above.
+
+No bundle vendors ML model weights; `gmft` downloads and caches them locally on first use unless
+`offline=true` is set with a prewarmed cache.
 
 ## Privacy
 

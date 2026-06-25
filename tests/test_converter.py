@@ -785,6 +785,36 @@ def make_masthead_title_pdf(path: Path) -> None:
     page.save()
 
 
+def make_running_header_footer_pdf(path: Path) -> None:
+    page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
+    bodies = [
+        [
+            "First page body discusses the introduction in careful detail.",
+            "The narrative continues across several sentences so the reader",
+            "clearly recognises this region as ordinary flowing prose text.",
+        ],
+        [
+            "Second page body explores the proposed method very carefully.",
+            "Additional explanatory sentences keep the column reading like",
+            "natural prose rather than any sort of tabular or gridded layout.",
+        ],
+        [
+            "Third page body reports the experimental results quite clearly.",
+            "The closing discussion spans multiple lines of continuous text",
+            "to ensure the converter treats the page as a readable paragraph.",
+        ],
+    ]
+    for index, lines in enumerate(bodies):
+        draw_text(page, 72, 30, "Internal review copy do not distribute", size=9)
+        if index == 0:
+            draw_text(page, 72, 72, "A Study Of Running Headers And Footers", size=18)
+        for offset, body in enumerate(lines):
+            draw_text(page, 72, 150 + offset * 22, body, size=12)
+        draw_text(page, 72, 760, f"Confidential draft page {index + 1}", size=9)
+        page.showPage()
+    page.save()
+
+
 def make_column_figure_pdf(path: Path) -> None:
     page = canvas.Canvas(str(path), pagesize=(PAGE_WIDTH, PAGE_HEIGHT))
     draw_text(page, 72, 72, "Two Column Figure Paper", size=18)
@@ -1602,6 +1632,24 @@ def test_visual_title_skips_conference_masthead(tmp_path: Path) -> None:
     assert "LANGUAGE MODELS" not in all_text
     assert "Shunyu Yao" in all_text
     assert "second page body" in all_text
+
+
+def test_repeating_headers_and_footers_are_skipped(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "running-header-footer.pdf"
+    html_path = tmp_path / "running-header-footer-reader.html"
+    make_running_header_footer_pdf(pdf_path)
+
+    result = convert_pdf_to_card_html(pdf_path, output_path=html_path, title="Running")
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    all_text = " ".join(card["text"] for card in manifest["cards"])
+
+    assert "Internal review copy" not in all_text
+    assert "Confidential draft" not in all_text
+    assert "First page body" in all_text
+    assert "Second page body" in all_text
+    assert "Third page body" in all_text
+    assert "A Study Of Running Headers And Footers" in all_text
 
 
 def test_heuristic_figure_crop_excludes_caption_and_neighboring_column_text(tmp_path: Path) -> None:

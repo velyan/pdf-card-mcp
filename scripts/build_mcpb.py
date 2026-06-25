@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = {
     "lite": ("manifest.json", "pdf-card-mcp-lite.mcpb"),
     "full": ("manifest.full.json", "pdf-card-mcp.mcpb"),
+    "desktop": ("manifest.uv.json", "pdf-card-mcp-desktop.mcpb"),
 }
 
 

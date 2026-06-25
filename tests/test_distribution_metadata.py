@@ -76,6 +76,16 @@ def test_mcpb_manifest_declares_smithery_compatible_runtime() -> None:
         assert manifest["tools_generated"] is True
 
 
+def test_desktop_mcpb_manifest_uses_uv_runtime() -> None:
+    manifest = load_json("manifest.uv.json")
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert manifest["server"]["type"] == "uv"
+    assert manifest["server"]["mcp_config"]["command"] == "uv"
+    assert manifest["version"] == pyproject["project"]["version"]
+    assert manifest["tools_generated"] is True
+
+
 def test_glama_maintainer_metadata_exists() -> None:
     data = load_json("glama.json")
 
