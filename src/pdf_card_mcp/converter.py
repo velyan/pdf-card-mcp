@@ -124,6 +124,9 @@ class PdfCardConverter:
         self._asset_ids: set[str] = set()
         self._ligature_repair_pages: set[int] = set()
         self._toc_targets_by_title: dict[str, PdfTocEntry] = {}
+        self._repeating_top_keys: frozenset[str] = frozenset()
+        self._repeating_bottom_keys: frozenset[str] = frozenset()
+        self._page_lines_cache: dict[int, list[dict[str, Any]]] = {}
 
     def convert(self) -> ConversionResult:
         pdf_path = self.options.pdf_path
@@ -149,6 +152,9 @@ class PdfCardConverter:
             processed_pages = min(page_count, self.options.max_pages or page_count)
             title = self._title(plumber_pdf)
             self._toc_targets_by_title = toc_targets_by_title(document.toc_entries())
+            self._repeating_top_keys, self._repeating_bottom_keys = (
+                self._detect_repeating_margins(plumber_pdf, processed_pages)
+            )
             gmft_tables = self._detect_gmft_tables(processed_pages)
             for index in range(processed_pages):
                 page_number = index + 1
@@ -628,15 +634,12 @@ class PdfCardConverter:
             )
         return figure_regions
 
-    def _extract_text_blocks(
-        self,
-        pdf_page: PdfiumPage,
-        plumber_page: pdfplumber.page.Page,
-        page_number: int,
-        suppressed_regions: list[BBox],
-        document_title: str,
-    ) -> list[TextBlock]:
-        text_blocks: list[TextBlock] = []
+    def _page_reading_lines(
+        self, plumber_page: pdfplumber.page.Page, page_number: int
+    ) -> list[dict[str, Any]]:
+        cached = self._page_lines_cache.get(page_number)
+        if cached is not None:
+            return cached
         if self.options.text_engine == "pdfplumber_words":
             lines = split_words_into_reading_order_segments(
                 extract_words(plumber_page),
@@ -653,9 +656,90 @@ class PdfCardConverter:
                     extract_words(plumber_page),
                     float(plumber_page.width),
                 )
+        self._page_lines_cache[page_number] = lines
+        return lines
+
+    def _detect_repeating_margins(
+        self, plumber_pdf: pdfplumber.PDF, processed_pages: int
+    ) -> tuple[frozenset[str], frozenset[str]]:
+        """Find header/footer text that repeats in the page margins.
+
+        Returns the set of normalized keys seen in the top margin and the set
+        seen in the bottom margin on enough pages to be treated as running
+        headers/footers. Single-page documents are left untouched.
+        """
+        if processed_pages < 2:
+            return frozenset(), frozenset()
+        top_pages: dict[str, set[int]] = {}
+        bottom_pages: dict[str, set[int]] = {}
+        for index in range(processed_pages):
+            plumber_page = plumber_pdf.pages[index]
+            height = float(plumber_page.height)
+            if height <= 0:
+                continue
+            top_limit = height * HEADER_BAND_FRACTION
+            bottom_limit = height * (1.0 - FOOTER_BAND_FRACTION)
+            for line in self._page_reading_lines(plumber_page, index + 1):
+                key = margin_repeat_key(str(line.get("text", "")))
+                if not key:
+                    continue
+                bbox = line.get("bbox")
+                if bbox is None:
+                    continue
+                if float(bbox[1]) <= top_limit:
+                    top_pages.setdefault(key, set()).add(index)
+                elif float(bbox[3]) >= bottom_limit:
+                    bottom_pages.setdefault(key, set()).add(index)
+        top_keys = frozenset(
+            key
+            for key, pages in top_pages.items()
+            if margin_text_repeats(len(pages), processed_pages)
+        )
+        bottom_keys = frozenset(
+            key
+            for key, pages in bottom_pages.items()
+            if margin_text_repeats(len(pages), processed_pages)
+        )
+        return top_keys, bottom_keys
+
+    def _is_repeating_margin_line(self, line: dict[str, Any], page_height: float) -> bool:
+        if not (self._repeating_top_keys or self._repeating_bottom_keys):
+            return False
+        if page_height <= 0:
+            return False
+        bbox = line.get("bbox")
+        if bbox is None:
+            return False
+        key = margin_repeat_key(str(line.get("text", "")))
+        if not key:
+            return False
+        top = float(bbox[1])
+        bottom = float(bbox[3])
+        if top <= page_height * HEADER_BAND_FRACTION and key in self._repeating_top_keys:
+            return True
+        if (
+            bottom >= page_height * (1.0 - FOOTER_BAND_FRACTION)
+            and key in self._repeating_bottom_keys
+        ):
+            return True
+        return False
+
+    def _extract_text_blocks(
+        self,
+        pdf_page: PdfiumPage,
+        plumber_page: pdfplumber.page.Page,
+        page_number: int,
+        suppressed_regions: list[BBox],
+        document_title: str,
+    ) -> list[TextBlock]:
+        text_blocks: list[TextBlock] = []
+        lines = self._page_reading_lines(plumber_page, page_number)
+        page_height = float(plumber_page.height)
 
         filtered_lines: list[dict[str, Any]] = []
         for line in lines:
+            if self._is_repeating_margin_line(line, page_height):
+                continue
             bbox = tuple(float(value) for value in line["bbox"])
             filtered_line = dict(line)
             filtered_line["bbox"] = bbox
@@ -1372,6 +1456,31 @@ def repair_residual_pdf_ligature_words(text: str) -> str:
 
 def normalized_key(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", normalize_text(text).lower())
+
+
+HEADER_BAND_FRACTION = 0.12
+FOOTER_BAND_FRACTION = 0.12
+MARGIN_REPEAT_RATIO = 0.4
+
+
+def margin_repeat_key(text: str) -> str:
+    """Stable key for matching running headers/footers across pages.
+
+    Digit runs (page numbers, dates) are collapsed so otherwise-identical
+    running text matches even when the page number differs.
+    """
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return ""
+    collapsed = re.sub(r"\d+", " ", cleaned)
+    return normalized_key(collapsed)
+
+
+def margin_text_repeats(occurrence_pages: int, processed_pages: int) -> bool:
+    """Whether margin text seen on ``occurrence_pages`` counts as a header/footer."""
+    if processed_pages < 2 or occurrence_pages < 2:
+        return False
+    return occurrence_pages >= max(2, round(processed_pages * MARGIN_REPEAT_RATIO))
 
 
 def is_metadata_or_noise(
