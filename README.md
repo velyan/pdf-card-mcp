@@ -55,9 +55,10 @@ Then add the server with one click. The buttons run the published
 claude mcp add pdf-card -- uvx --from pdf-card-mcp pdf-card-mcp-server
 ```
 
-**Claude Desktop** (no terminal): download `pdf-card-mcp-lite.mcpb` from the
+**Claude Desktop** (no terminal, no prerequisites): download `pdf-card-mcp-desktop.mcpb` from the
 [latest release](https://github.com/velyan/pdf-card-mcp/releases/latest) and double-click it to
-install as an extension.
+install as an extension. This bundle declares the `uv` runtime, so Claude Desktop installs Python
+and dependencies for you — you do not need the `uv` step above for this path.
 
 After installing, restart (or reload MCP servers in) your client so it picks up the new server.
 
@@ -334,13 +335,17 @@ This repo is arranged so the root can be packed directly:
 python scripts/build_mcpb.py --variant all
 ```
 
-The slim bundle writes `dist/pdf-card-mcp-lite.mcpb`. The full-quality UV-powered bundle writes
-`dist/pdf-card-mcp.mcpb` and installs the `table-ml` extra. Neither bundle vendors ML model
-weights; `gmft` downloads and caches them locally on first use unless `offline=true` is set
-with a prewarmed cache.
+This builds three bundles:
 
-The MCPB manifests declare a Python runtime and execute through `uv`, so compatible hosts can
-install dependencies from `pyproject.toml` instead of relying on a user-managed Python setup.
+- `dist/pdf-card-mcp-lite.mcpb` and `dist/pdf-card-mcp.mcpb` declare `server.type = "python"`
+  for MCP registry and Smithery directory compatibility. The full bundle additionally installs the
+  `table-ml` extra. These execute through `uv`, so the host (or user) must provide `uv`.
+- `dist/pdf-card-mcp-desktop.mcpb` declares `server.type = "uv"` (from `manifest.uv.json`). Claude
+  Desktop manages Python and dependencies itself, so end users can double-click to install with no
+  prerequisites. This is the bundle linked from the one-click install section above.
+
+No bundle vendors ML model weights; `gmft` downloads and caches them locally on first use unless
+`offline=true` is set with a prewarmed cache.
 
 ## Privacy
 
